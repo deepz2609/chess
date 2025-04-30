@@ -1,4 +1,4 @@
-// play/page.tsx
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -8,7 +8,7 @@ import { Chess, Move } from 'chess.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { RotateCcw, Info, Settings, BrainCircuit } from 'lucide-react'; // Using BrainCircuit for AI
+import { RotateCcw, Info, Settings, BrainCircuit } from 'lucide-react'; // Using BrainCircuit for AI title
 import { useToast } from "@/hooks/use-toast";
 import { LoaderCircle } from 'lucide-react';
 import { findBestChessMove, type FindBestChessMoveInput, type FindBestChessMoveOutput } from '@/ai/flows/find-best-chess-move'; // Import Genkit flow
@@ -20,7 +20,6 @@ export default function PlayPage() {
   const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w');
   const [gameOver, setGameOver] = useState<{ reason: string; winner: string | null } | null>(null);
   const [isThinking, setIsThinking] = useState(false); // General thinking state for AI
-  const [lastAiAnalysis, setLastAiAnalysis] = useState<string | null>(null);
   const { toast } = useToast();
   const aiMoveRequestPending = useRef(false); // Flag to prevent duplicate AI move requests
 
@@ -57,7 +56,7 @@ export default function PlayPage() {
             setGameOver(null);
          }
      }
-   }, [gameOver, toast]); // Keep toast dependency
+   }, [gameOver, toast]);
 
 
    // Make a random legal move for the AI (Fallback)
@@ -95,7 +94,6 @@ export default function PlayPage() {
          console.log(`[makeRandomMove] Applied random move: ${moveResult.san}. New FEN: ${finalGameCopy.fen()}`);
          setGame(finalGameCopy);
          setFen(finalGameCopy.fen());
-         setLastAiAnalysis("AI played a random move."); // Indicate random move was played
          checkGameState(finalGameCopy);
       } else {
          console.error(`[makeRandomMove] Generated random move ${moveNotation} was invalid according to chess.js. FEN: ${game.fen()}. This shouldn't happen.`);
@@ -111,8 +109,8 @@ export default function PlayPage() {
    }, [game, gameOver, playerColor, toast, checkGameState]);
 
     // Handle AI move (received from Gemini or random fallback)
-    const handleAiMove = useCallback((moveNotation: string | null, analysis?: string | null) => {
-        console.log(`[handleAiMove] Processing move: ${moveNotation ?? 'null'}. Analysis: ${analysis}`);
+    const handleAiMove = useCallback((moveNotation: string | null) => {
+        console.log(`[handleAiMove] Processing move: ${moveNotation ?? 'null'}.`);
         aiMoveRequestPending.current = false; // Reset pending flag FIRST
         setIsThinking(false); // Turn off thinking indicator
 
@@ -122,9 +120,8 @@ export default function PlayPage() {
         }
 
         if (moveNotation === null) {
-             console.warn("[handleAiMove] Received null move. Attempting random move.");
-             toast({ title: "AI Suggestion", description: analysis || "AI could not determine a move. Playing randomly.", variant: "default" });
-             setLastAiAnalysis(analysis || "AI could not determine a move, played randomly.");
+             console.warn("[handleAiMove] Received null move from AI. Attempting random move.");
+             toast({ title: "AI Decision", description: "AI could not determine a move. Playing randomly.", variant: "default" });
              makeRandomMove();
              return;
         }
@@ -138,7 +135,6 @@ export default function PlayPage() {
         } catch (error) {
             console.error(`[handleAiMove] Error applying move ${moveNotation} to FEN ${game.fen()} using chess.js:`, error);
             toast({ title: "AI Move Error", description: `Error applying AI move '${moveNotation}'. Playing randomly.`, variant: "destructive" });
-            setLastAiAnalysis(`Error applying AI move '${moveNotation}', played randomly.`);
             makeRandomMove(); // Fallback on error
             return;
         }
@@ -147,12 +143,10 @@ export default function PlayPage() {
             console.log(`[handleAiMove] chess.js applied move successfully. SAN: ${moveResult.san}, New FEN: ${gameCopy.fen()}`);
             setGame(gameCopy);
             setFen(gameCopy.fen()); // Trigger useEffect for turn check
-            setLastAiAnalysis(analysis || `AI played ${moveResult.san}`);
             checkGameState(gameCopy);
         } else {
             console.error(`[handleAiMove] Invalid AI move according to chess.js (moveResult was null): ${moveNotation} for FEN: ${game.fen()}. Trying random move.`);
             toast({ title: "Invalid AI Move", description: `Received invalid move: ${moveNotation}. Playing randomly.`, variant: "destructive" });
-            setLastAiAnalysis(`AI suggested invalid move ${moveNotation}, played randomly.`);
             makeRandomMove(); // Fallback if move is invalid
         }
     }, [game, gameOver, playerColor, toast, checkGameState, makeRandomMove]);
@@ -179,7 +173,6 @@ export default function PlayPage() {
       console.log(`[findAiMove] Conditions met. Requesting move for FEN: ${currentFen}, Turn: ${currentPlayerTurn}`);
       setIsThinking(true);
       aiMoveRequestPending.current = true;
-      setLastAiAnalysis(null); // Clear previous analysis
 
       try {
           const input: FindBestChessMoveInput = {
@@ -192,12 +185,11 @@ export default function PlayPage() {
           console.log("[findAiMove] Received result from Genkit flow:", result);
 
           // Process result (handles success, error, no_valid_moves internally)
-          handleAiMove(result.bestMoveUci, result.analysis);
+          handleAiMove(result.bestMoveUci);
 
       } catch (error) {
           console.error("[findAiMove] Error calling Genkit flow:", error);
           toast({ title: "AI Error", description: `Failed to get AI move: ${error instanceof Error ? error.message : String(error)}. Playing randomly.`, variant: "destructive" });
-          setLastAiAnalysis(`Error fetching AI move: ${error instanceof Error ? error.message : String(error)}, played randomly.`);
           // Don't call handleAiMove with null here, directly call random move
           makeRandomMove();
           // Ensure state is consistent after error + random move
@@ -223,7 +215,7 @@ export default function PlayPage() {
         const timer = setTimeout(() => {
           console.log("[Turn Check Timer] Timer fired, calling findAiMove.");
           findAiMove();
-        }, 500); // Slightly longer delay for API call UX
+        }, 500); // Delay for API call UX
         return () => {
              console.log("[Turn Check Timer] Clearing AI move timer due to dependency change or unmount.");
              clearTimeout(timer);
@@ -231,7 +223,7 @@ export default function PlayPage() {
       } else {
          console.log("[Turn Check Effect] Conditions NOT met for triggering AI move.");
       }
-    }, [fen, playerColor, gameOver, isThinking, game, findAiMove]); // Keep 'game' dependency for game.turn()
+    }, [fen, playerColor, gameOver, isThinking, game, findAiMove]);
 
 
    // Handle player move attempt
@@ -261,7 +253,6 @@ export default function PlayPage() {
        console.log(`[Player Move] Move successful: ${moveResult.san}. New FEN: ${gameCopy.fen()}`);
        setGame(gameCopy);
        setFen(gameCopy.fen()); // Triggers useEffect for AI turn
-       setLastAiAnalysis(null); // Clear AI analysis after player move
        checkGameState(gameCopy);
        return true;
 
@@ -288,14 +279,13 @@ export default function PlayPage() {
       setFen(newGame.fen());
       setGameOver(null);
       setIsThinking(false);
-      setLastAiAnalysis(null);
       setPlayerColor(newPlayerColor);
       setOrientation(newPlayerColor === 'w' ? 'white' : 'black');
       console.log("[Game Reset] React state updated.");
 
       // The useEffect hook [fen, playerColor, ...] will handle triggering the AI if it's AI's turn.
       console.log("[Game Reset] Game reset process complete.");
-    }, [playerColor, isThinking]); // Removed toast dependency as it's not used here
+    }, [playerColor, isThinking]);
 
 
     // Choose player color (resets game)
@@ -315,7 +305,6 @@ export default function PlayPage() {
               <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-lg">
                 <LoaderCircle className="h-12 w-12 text-accent animate-spin" />
                 <p className="text-accent-foreground font-semibold mt-2">AI is thinking...</p>
-                 {/* Removed Progress bar as Gemini call duration is variable */}
               </div>
             )}
             <Chessboard
@@ -340,19 +329,6 @@ export default function PlayPage() {
                   Play Again?
                 </Button>
             </Alert>
-          )}
-          {/* Display Last AI Analysis */}
-          {lastAiAnalysis && !gameOver && (
-               <Card className="mt-4 p-3 bg-muted/50 rounded-lg shadow">
-                   <CardHeader className="p-0 pb-2">
-                       <CardTitle className="text-sm font-medium text-primary flex items-center">
-                           <BrainCircuit className="h-4 w-4 mr-2" /> AI Analysis
-                       </CardTitle>
-                   </CardHeader>
-                   <CardContent className="p-0">
-                       <p className="text-xs text-muted-foreground">{lastAiAnalysis}</p>
-                   </CardContent>
-               </Card>
           )}
        </div>
 
