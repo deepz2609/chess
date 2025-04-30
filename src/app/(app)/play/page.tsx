@@ -16,8 +16,8 @@ import { LoaderCircle } from 'lucide-react'; // Import LoaderCircle
 // Path to the NEW worker script
 const stockfishWorkerPath = '/stockfish-worker.js'; // Path to the worker script
 
-const AI_DEPTH = 3; // Define AI thinking depth (reduced for faster response)
-const AI_TIMEOUT = 5000; // Max time (ms) for AI to think
+const AI_DEPTH = 1; // Define AI thinking depth (reduced for faster response)
+const AI_TIMEOUT = 3000; // Max time (ms) for AI to think (reduced)
 
 export default function PlayPage() {
   const [game, setGame] = useState(new Chess());
@@ -34,136 +34,42 @@ export default function PlayPage() {
   const engineReady = useRef(false); // Flag to track if 'readyok' was received
   const aiMoveTimer = useRef<NodeJS.Timeout | null>(null); // Timer for AI timeout
 
-   // Initialize Stockfish via Web Worker
-   useEffect(() => {
-     if (typeof Worker !== 'undefined') {
-       console.log("[Worker Init] Attempting to initialize Stockfish worker...");
-       // Check if worker already exists to avoid multiple initializations on HMR
-       if (stockfishWorker.current) {
-            console.log("[Worker Init] Terminating existing Stockfish worker before re-initialization.");
-            stockfishWorker.current.terminate();
-            stockfishWorker.current = null;
-            moveRequestPending.current = false; // Reset flags
-            engineReady.current = false;
-            if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear timer
-       }
-
-       try {
-           // Use the updated worker path
-           stockfishWorker.current = new Worker(stockfishWorkerPath);
-           console.log(`[Worker Init] Stockfish worker instance created from ${stockfishWorkerPath}.`);
-           engineReady.current = false; // Reset ready state on new worker
-
-           stockfishWorker.current.onmessage = (event) => {
-             const message = event.data;
-             console.log(`[Worker Msg Recv] Received: ${message}`); // Log all messages
-
-             // Check for initialization errors from the worker itself
-             if (typeof message === 'string' && message.startsWith('error:')) {
-                console.error(`[Worker Msg Recv] Received error from worker initialization: ${message}`);
-                toast({ title: "Stockfish Worker Error", description: message, variant: "destructive" });
-                setIsThinking(false);
-                moveRequestPending.current = false;
-                engineReady.current = false; // Engine is not usable
-                // Consider terminating the worker if initialization failed critically
-                stockfishWorker.current?.terminate();
-                stockfishWorker.current = null;
-                return; // Stop processing further messages if init failed
-             }
-
-
-             if (message === 'uciok') { // Message from the worker script itself
-                console.log("[Worker Msg Recv] Stockfish Worker UCI OK received. Sending 'isready' to worker (which forwards to engine).");
-                stockfishWorker.current?.postMessage('isready');
-             } else if (message === 'readyok') { // Message from the engine, forwarded by worker
-                 console.log("[Worker Msg Recv] Stockfish Engine Ready OK received. Engine is ready.");
-                 engineReady.current = true; // Engine is fully ready
-                 // Check if AI needs to move immediately (e.g., player chose black on initial load/reset)
-                 if (game.turn() !== playerColor && !isThinking && !moveRequestPending.current) {
-                    console.log("[Worker Msg Recv] Engine ready, and it's AI's turn. Triggering AI move check via findAiMove.");
-                    findAiMove(); // Attempt to move if conditions are right
-                 } else {
-                    console.log("[Worker Msg Recv] Engine ready, but AI move not triggered:", { turn: game.turn(), playerColor, isThinking, moveRequestPending: moveRequestPending.current });
-                 }
-             } else if (message?.startsWith('bestmove')) { // Message from the engine
-               if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear the timeout timer
-               const bestMove = message.split(' ')[1];
-               console.log(`[Worker Msg Recv] Received bestmove command: ${message}`);
-               // Reset flag *before* processing move to allow new requests if needed immediately
-               moveRequestPending.current = false;
-               setIsThinking(false); // AI is no longer thinking
-
-               if (bestMove && bestMove !== '(none)' && bestMove !== '0000') { // Added check for '0000'
-                   console.log(`[Worker Msg Recv] Extracted bestMove: ${bestMove}. Calling handleAiMove.`);
-                   handleAiMove(bestMove);
-               } else {
-                   console.error("[AI Error] Stockfish returned no valid bestmove ('(none)' or '0000'). Triggering random move.");
-                   toast({ title: "AI Error", description: "AI could not determine a move. Making a random move.", variant: "destructive" });
-                   makeRandomMove(); // Make a random move as fallback
-               }
-             } else if (message?.includes("info depth") && message?.includes("currmove")) { // More specific check for progress
-                 const depthMatch = message.match(/depth (\d+)/);
-                 if (depthMatch) {
-                     const currentDepth = parseInt(depthMatch[1], 10);
-                     // Update progress based on the defined AI_DEPTH
-                     const progress = Math.min(100, (currentDepth / AI_DEPTH) * 100);
-                     // console.log(`[AI Progress] Depth: ${currentDepth}, Progress: ${progress}%`); // Can be noisy
-                     setThinkingProgress(progress);
-                 }
-             } else if (message?.includes('info score cp')) {
-                // Handle 'info score cp' messages for debugging or display
-                 const match = message.match(/score cp (-?\d+)/);
-                 if (match) {
-                   console.log(`[Worker Msg Recv] info score cp: ${match[1]}`);
-                 }
-             }
-             // Ignore other 'info', 'id', 'option' messages for now unless needed
-             // else {
-             //    console.log(`[Worker Msg Recv] Ignored message: ${message}`);
-             // }
-           };
-
-           stockfishWorker.current.onerror = (error) => {
-              if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear the timeout timer
-              console.error('[Worker Init] Stockfish Worker onerror event:', error.message, error);
-              toast({ title: "Stockfish Error", description: `Worker error: ${error.message}`, variant: "destructive" });
-              setIsThinking(false); // Ensure thinking stops on error
-              moveRequestPending.current = false; // Reset pending flag
-              engineReady.current = false; // Engine is no longer ready
-           };
-
-           // No initial message needed here like 'uci',
-           // as the new worker script sends 'uciok' automatically when ready.
-           // The 'onmessage' handler above will react to 'uciok' by sending 'isready'.
-           console.log("[Worker Init] Worker initialized. Waiting for 'uciok' message from worker script...");
-
-
-       } catch (e) {
-           console.error("[Worker Init] Failed to create Stockfish worker:", e);
-           toast({ title: "Worker Error", description: "Could not create AI engine worker.", variant: "destructive" });
-       }
-
-
-     } else {
-       console.error("[Worker Init] Web Workers are not supported in this browser.");
-       toast({ title: "Browser Incompatible", description: "Web Workers are needed for the AI engine.", variant: "destructive" });
+   // Check game state after each move - Define BEFORE functions that use it
+   const checkGameState = useCallback((currentGame: Chess) => {
+     console.log(`[checkGameState] Checking game state for FEN: ${currentGame.fen()}`);
+     let currentGameOver = null;
+     if (currentGame.isCheckmate()) {
+       currentGameOver = { reason: 'Checkmate', winner: currentGame.turn() === 'w' ? 'Black' : 'White' };
+       toast({ title: "Game Over!", description: `Checkmate! ${currentGameOver.winner} wins.` });
+     } else if (currentGame.isStalemate()) {
+       currentGameOver = { reason: 'Stalemate', winner: 'Draw' };
+       toast({ title: "Game Over!", description: "Stalemate! It's a draw." });
+     } else if (currentGame.isThreefoldRepetition()) {
+       currentGameOver = { reason: 'Threefold Repetition', winner: 'Draw' };
+       toast({ title: "Game Over!", description: "Draw by Threefold Repetition." });
+     } else if (currentGame.isInsufficientMaterial()) {
+       currentGameOver = { reason: 'Insufficient Material', winner: 'Draw' };
+       toast({ title: "Game Over!", description: "Draw by Insufficient Material." });
+     } else if (currentGame.isDraw()) { // Includes 50-move rule
+       currentGameOver = { reason: 'Draw', winner: 'Draw' };
+       toast({ title: "Game Over!", description: "The game is a draw (50-move rule or other draw condition)." });
      }
 
-     // Cleanup worker on unmount
-     return () => {
-        if (stockfishWorker.current) {
-            console.log("[Worker Cleanup] Terminating Stockfish worker on component unmount...");
-             if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear timer on unmount
-            stockfishWorker.current.terminate();
-            stockfishWorker.current = null;
-            moveRequestPending.current = false;
-            engineReady.current = false;
-        } else {
-            console.log("[Worker Cleanup] No Stockfish worker to terminate.");
-        }
-     };
-   // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, []); // Empty array: only run on initial mount and handle cleanup
+     if (currentGameOver) {
+         console.log(`[checkGameState] Game over detected: ${currentGameOver.reason}, Winner: ${currentGameOver.winner}. Updating state.`);
+         setGameOver(currentGameOver);
+         setIsThinking(false); // Stop AI thinking if game ends
+         moveRequestPending.current = false; // Clear pending request
+         if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear AI timer
+     } else {
+         console.log("[checkGameState] Game continues.");
+         // Only set to null if it's currently not null, avoids unnecessary re-renders
+         if (gameOver !== null) {
+            console.log("[checkGameState] Resetting gameOver state to null.");
+            setGameOver(null);
+         }
+     }
+   }, [gameOver, toast]); // Added gameOver to dependencies
 
 
    // Make a random legal move for the AI
@@ -217,6 +123,137 @@ export default function PlayPage() {
 
 
    }, [game, gameOver, playerColor, toast, checkGameState]); // checkGameState added
+
+   // Initialize Stockfish via Web Worker
+   useEffect(() => {
+     if (typeof Worker !== 'undefined') {
+       console.log("[Worker Init] Attempting to initialize Stockfish worker...");
+       // Check if worker already exists to avoid multiple initializations on HMR
+       if (stockfishWorker.current) {
+            console.log("[Worker Init] Terminating existing Stockfish worker before re-initialization.");
+            stockfishWorker.current.terminate();
+            stockfishWorker.current = null;
+            moveRequestPending.current = false; // Reset flags
+            engineReady.current = false;
+            if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear timer
+       }
+
+       try {
+           // Use the updated worker path
+           stockfishWorker.current = new Worker(stockfishWorkerPath);
+           console.log(`[Worker Init] Stockfish worker instance created from ${stockfishWorkerPath}.`);
+           engineReady.current = false; // Reset ready state on new worker
+
+           stockfishWorker.current.onmessage = (event) => {
+             const message = event.data;
+             console.log(`[Worker Msg Recv] Received: ${message}`); // Log all messages
+
+             // Check for initialization errors from the worker itself
+              if (typeof message === 'string' && message.startsWith('error:')) {
+                  if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear the timeout timer
+                  console.error(`[Worker Msg Recv] Received error from worker: ${message}`);
+                  toast({ title: "Stockfish Worker Error", description: message, variant: "destructive" });
+                  setIsThinking(false);
+                  moveRequestPending.current = false;
+                  engineReady.current = false; // Engine is not usable
+                  // Consider terminating the worker if initialization failed critically
+                  // stockfishWorker.current?.terminate();
+                  // stockfishWorker.current = null;
+                  return; // Stop processing further messages if init failed
+             }
+
+
+             if (message === 'uciok') { // Message from the worker script itself
+                console.log("[Worker Msg Recv] Stockfish Worker UCI OK received. Sending 'isready' to worker (which forwards to engine).");
+                stockfishWorker.current?.postMessage('isready');
+             } else if (message === 'readyok') { // Message from the engine, forwarded by worker
+                 console.log("[Worker Msg Recv] Stockfish Engine Ready OK received. Engine is ready.");
+                 engineReady.current = true; // Engine is fully ready
+                 // Check if AI needs to move immediately (e.g., player chose black on initial load/reset)
+                 if (game.turn() !== playerColor && !isThinking && !moveRequestPending.current) {
+                    console.log("[Worker Msg Recv] Engine ready, and it's AI's turn. Triggering AI move check via findAiMove.");
+                    findAiMove(); // Attempt to move if conditions are right
+                 } else {
+                    console.log("[Worker Msg Recv] Engine ready, but AI move not triggered:", { turn: game.turn(), playerColor, isThinking, moveRequestPending: moveRequestPending.current });
+                 }
+             } else if (message?.startsWith('bestmove')) { // Message from the engine
+               if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear the timeout timer
+               const bestMove = message.split(' ')[1];
+               console.log(`[Worker Msg Recv] Received bestmove command: ${message}`);
+               // Reset flag *before* processing move to allow new requests if needed immediately
+               moveRequestPending.current = false;
+               setIsThinking(false); // AI is no longer thinking
+
+               if (bestMove && bestMove !== '(none)' && bestMove !== '0000') { // Added check for '0000'
+                   console.log(`[Worker Msg Recv] Extracted bestMove: ${bestMove}. Calling handleAiMove.`);
+                   handleAiMove(bestMove);
+               } else {
+                   console.error("[AI Error] Stockfish returned no valid bestmove ('(none)' or '0000'). Triggering random move.");
+                   toast({ title: "AI Error", description: "AI could not determine a move. Making a random move.", variant: "destructive" });
+                   makeRandomMove(); // Make a random move as fallback
+               }
+           } else if (message?.startsWith('info depth') && message?.includes("currmove")) { // More specific check for progress
+                 const depthMatch = message.match(/depth (\d+)/);
+                 if (depthMatch) {
+                     const currentDepth = parseInt(depthMatch[1], 10);
+                     // Update progress based on the defined AI_DEPTH
+                     const progress = Math.min(100, (currentDepth / AI_DEPTH) * 100);
+                     // console.log(`[AI Progress] Depth: ${currentDepth}, Progress: ${progress}%`); // Can be noisy
+                     setThinkingProgress(progress);
+                 }
+             } else if (message?.startsWith('info score cp')) { // Corrected the condition check
+                 const match = message.match(/score cp (-?\d+)/);
+                 if (match) {
+                   console.log(`[Worker Msg Recv] info score cp: ${match[1]}`);
+                 }
+             }
+             // Ignore other 'info', 'id', 'option' messages for now unless needed
+             // else {
+             //    console.log(`[Worker Msg Recv] Ignored message: ${message}`);
+             // }
+           };
+
+           stockfishWorker.current.onerror = (error) => {
+              if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear the timeout timer
+              console.error('[Worker Init] Stockfish Worker onerror event:', error.message, error);
+              toast({ title: "Stockfish Error", description: `Worker error: ${error.message}`, variant: "destructive" });
+              setIsThinking(false); // Ensure thinking stops on error
+              moveRequestPending.current = false; // Reset pending flag
+              engineReady.current = false; // Engine is no longer ready
+           };
+
+           // No initial message needed here like 'uci',
+           // as the new worker script sends 'uciok' automatically when ready.
+           // The 'onmessage' handler above will react to 'uciok' by sending 'isready'.
+           console.log("[Worker Init] Worker initialized. Waiting for 'uciok' message from worker script...");
+
+
+       } catch (e) {
+           console.error("[Worker Init] Failed to create Stockfish worker:", e);
+           toast({ title: "Worker Error", description: "Could not create AI engine worker.", variant: "destructive" });
+       }
+
+
+     } else {
+       console.error("[Worker Init] Web Workers are not supported in this browser.");
+       toast({ title: "Browser Incompatible", description: "Web Workers are needed for the AI engine.", variant: "destructive" });
+     }
+
+     // Cleanup worker on unmount
+     return () => {
+        if (stockfishWorker.current) {
+            console.log("[Worker Cleanup] Terminating Stockfish worker on component unmount...");
+             if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear timer on unmount
+            stockfishWorker.current.terminate();
+            stockfishWorker.current = null;
+            moveRequestPending.current = false;
+            engineReady.current = false;
+        } else {
+            console.log("[Worker Cleanup] No Stockfish worker to terminate.");
+        }
+     };
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, []); // Empty array: only run on initial mount and handle cleanup
 
 
    // Function to make AI move
@@ -364,42 +401,6 @@ export default function PlayPage() {
    }, [game, gameOver, playerColor, toast, checkGameState, makeRandomMove]); // Added checkGameState and makeRandomMove
 
 
-    // Check game state after each move
-    const checkGameState = useCallback((currentGame: Chess) => {
-      console.log(`[checkGameState] Checking game state for FEN: ${currentGame.fen()}`);
-      let currentGameOver = null;
-      if (currentGame.isCheckmate()) {
-        currentGameOver = { reason: 'Checkmate', winner: currentGame.turn() === 'w' ? 'Black' : 'White' };
-        toast({ title: "Game Over!", description: `Checkmate! ${currentGameOver.winner} wins.` });
-      } else if (currentGame.isStalemate()) {
-        currentGameOver = { reason: 'Stalemate', winner: 'Draw' };
-        toast({ title: "Game Over!", description: "Stalemate! It's a draw." });
-      } else if (currentGame.isThreefoldRepetition()) {
-        currentGameOver = { reason: 'Threefold Repetition', winner: 'Draw' };
-        toast({ title: "Game Over!", description: "Draw by Threefold Repetition." });
-      } else if (currentGame.isInsufficientMaterial()) {
-        currentGameOver = { reason: 'Insufficient Material', winner: 'Draw' };
-        toast({ title: "Game Over!", description: "Draw by Insufficient Material." });
-      } else if (currentGame.isDraw()) { // Includes 50-move rule
-        currentGameOver = { reason: 'Draw', winner: 'Draw' };
-        toast({ title: "Game Over!", description: "The game is a draw (50-move rule or other draw condition)." });
-      }
-
-      if (currentGameOver) {
-          console.log(`[checkGameState] Game over detected: ${currentGameOver.reason}, Winner: ${currentGameOver.winner}. Updating state.`);
-          setGameOver(currentGameOver);
-          setIsThinking(false); // Stop AI thinking if game ends
-          moveRequestPending.current = false; // Clear pending request
-          if (aiMoveTimer.current) clearTimeout(aiMoveTimer.current); // Clear AI timer
-      } else {
-          console.log("[checkGameState] Game continues.");
-          // Only set to null if it's currently not null, avoids unnecessary re-renders
-          if (gameOver !== null) {
-             console.log("[checkGameState] Resetting gameOver state to null.");
-             setGameOver(null);
-          }
-      }
-    }, [gameOver, toast]); // Added gameOver to dependencies
 
      // Trigger AI move when it's AI's turn - RELIES on FEN change or playerColor change
     useEffect(() => {
