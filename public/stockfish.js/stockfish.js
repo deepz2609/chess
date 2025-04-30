@@ -97,9 +97,9 @@ function handleEngineMessage(message) {
     }
     // Forward other potentially useful info? (e.g., evaluation 'info score')
     // Be selective to avoid flooding the main thread.
-    // if (message.includes('info score')) {
-    //     self.postMessage(message);
-    // }
+    if (message.includes('info score')) {
+        self.postMessage(message);
+    }
 }
 
 // Error handling for the worker itself
