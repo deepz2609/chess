@@ -59,55 +59,6 @@ export default function PlayPage() {
    }, [gameOver, toast]);
 
 
-   // Make a random legal move for the AI (Fallback)
-   const makeRandomMove = useCallback(() => {
-     console.log("[makeRandomMove] Attempting to make a random fallback move.");
-      if (gameOver || game.turn() === playerColor) {
-         console.warn("[makeRandomMove] Skipping: Game over or player's turn.");
-         setIsThinking(false);
-         aiMoveRequestPending.current = false;
-         return;
-      }
-
-     const gameCopy = new Chess(game.fen());
-     const possibleMoves = gameCopy.moves({ verbose: true });
-
-     if (possibleMoves.length === 0) {
-       console.warn("[makeRandomMove] No legal moves available for random move. Checking game state.");
-       checkGameState(gameCopy);
-       setIsThinking(false);
-       aiMoveRequestPending.current = false;
-       return;
-     }
-
-     const randomIndex = Math.floor(Math.random() * possibleMoves.length);
-     const randomMove = possibleMoves[randomIndex];
-     const moveNotation = `${randomMove.from}${randomMove.to}${randomMove.promotion || ''}`; // UCI format
-
-     console.log(`[makeRandomMove] Selected random move: ${randomMove.san} (UCI: ${moveNotation})`);
-
-     // Make the move directly
-      const finalGameCopy = new Chess(game.fen());
-      const moveResult = finalGameCopy.move(moveNotation, { sloppy: true });
-
-      if (moveResult) {
-         console.log(`[makeRandomMove] Applied random move: ${moveResult.san}. New FEN: ${finalGameCopy.fen()}`);
-         setGame(finalGameCopy);
-         setFen(finalGameCopy.fen());
-         checkGameState(finalGameCopy);
-      } else {
-         console.error(`[makeRandomMove] Generated random move ${moveNotation} was invalid according to chess.js. FEN: ${game.fen()}. This shouldn't happen.`);
-         toast({ title: "Random Move Error", description: "Failed to make a random fallback move.", variant: "destructive" });
-         // Don't call makeRandomMove again to prevent loops.
-         checkGameState(game); // Check current state
-      }
-
-      // Ensure state is updated after the move
-      setIsThinking(false);
-      aiMoveRequestPending.current = false;
-
-   }, [game, gameOver, playerColor, toast, checkGameState]);
-
     // Handle AI move (received from Gemini or random fallback)
     const handleAiMove = useCallback((moveNotation: string | null) => {
         console.log(`[handleAiMove] Processing move: ${moveNotation ?? 'null'}.`);
@@ -120,9 +71,10 @@ export default function PlayPage() {
         }
 
         if (moveNotation === null) {
-             console.warn("[handleAiMove] Received null move from AI. Attempting random move.");
-             toast({ title: "AI Decision", description: "AI could not determine a move. Playing randomly.", variant: "default" });
-             makeRandomMove();
+             console.warn("[handleAiMove] Received null move from AI. Handling this case (e.g., log, or potentially trigger fallback if needed).");
+             // toast({ title: "AI Decision", description: "AI could not determine a valid move.", variant: "default" });
+             // No automatic fallback here, let the error cascade or handle specifically if Gemini fails
+             checkGameState(game); // Check if the game ended due to no moves
              return;
         }
 
@@ -134,8 +86,9 @@ export default function PlayPage() {
             moveResult = gameCopy.move(moveNotation, { sloppy: true });
         } catch (error) {
             console.error(`[handleAiMove] Error applying move ${moveNotation} to FEN ${game.fen()} using chess.js:`, error);
-            toast({ title: "AI Move Error", description: `Error applying AI move '${moveNotation}'. Playing randomly.`, variant: "destructive" });
-            makeRandomMove(); // Fallback on error
+            // toast({ title: "AI Move Error", description: `Error applying AI move '${moveNotation}'.`, variant: "destructive" });
+            // Fallback on error is removed - let the flow handle errors.
+            checkGameState(game); // Check current state
             return;
         }
 
@@ -145,11 +98,12 @@ export default function PlayPage() {
             setFen(gameCopy.fen()); // Trigger useEffect for turn check
             checkGameState(gameCopy);
         } else {
-            console.error(`[handleAiMove] Invalid AI move according to chess.js (moveResult was null): ${moveNotation} for FEN: ${game.fen()}. Trying random move.`);
-            toast({ title: "Invalid AI Move", description: `Received invalid move: ${moveNotation}. Playing randomly.`, variant: "destructive" });
-            makeRandomMove(); // Fallback if move is invalid
+            console.error(`[handleAiMove] Invalid AI move according to chess.js (moveResult was null): ${moveNotation} for FEN: ${game.fen()}.`);
+            // toast({ title: "Invalid AI Move", description: `Received invalid move from AI: ${moveNotation}.`, variant: "destructive" });
+            // Fallback is removed.
+            checkGameState(game); // Check current state
         }
-    }, [game, gameOver, playerColor, toast, checkGameState, makeRandomMove]);
+    }, [game, gameOver, playerColor, toast, checkGameState]);
 
 
    // Function to request AI move from Gemini
@@ -185,18 +139,30 @@ export default function PlayPage() {
           console.log("[findAiMove] Received result from Genkit flow:", result);
 
           // Process result (handles success, error, no_valid_moves internally)
-          handleAiMove(result.bestMoveUci);
+          if (result.status === 'success' && result.bestMoveUci) {
+            handleAiMove(result.bestMoveUci);
+          } else if (result.status === 'no_valid_moves') {
+             console.warn("[findAiMove] Genkit flow reported no valid moves could be determined.");
+             handleAiMove(null); // Signal no move found
+             checkGameState(game); // Check if game over
+          } else { // Handle 'error' or unexpected null move
+             console.error(`[findAiMove] Genkit flow failed or returned unexpected result: Status ${result.status}, Move ${result.bestMoveUci}`);
+             // toast({ title: "AI Error", description: "The AI failed to determine a move.", variant: "destructive" });
+             // No fallback here, let the game state reflect the error
+             setIsThinking(false);
+             aiMoveRequestPending.current = false;
+             checkGameState(game); // Check current state
+          }
 
       } catch (error) {
           console.error("[findAiMove] Error calling Genkit flow:", error);
-          toast({ title: "AI Error", description: `Failed to get AI move: ${error instanceof Error ? error.message : String(error)}. Playing randomly.`, variant: "destructive" });
-          // Don't call handleAiMove with null here, directly call random move
-          makeRandomMove();
-          // Ensure state is consistent after error + random move
+          // toast({ title: "AI Error", description: `Failed to get AI move: ${error instanceof Error ? error.message : String(error)}.`, variant: "destructive" });
+          // Ensure state is consistent after error
           setIsThinking(false);
           aiMoveRequestPending.current = false;
+          checkGameState(game); // Check current state
       }
-   }, [game, gameOver, playerColor, isThinking, toast, handleAiMove, makeRandomMove, checkGameState]);
+   }, [game, gameOver, playerColor, isThinking, toast, handleAiMove, checkGameState]);
 
 
      // Trigger AI move when it's AI's turn
@@ -308,14 +274,14 @@ export default function PlayPage() {
               </div>
             )}
             <Chessboard
-              key={fen + orientation}
+              key={fen + orientation} // Re-render on FEN or orientation change
               position={fen}
               onPieceDrop={onDrop}
               boardOrientation={orientation}
               customBoardStyle={{ borderRadius: '4px', boxShadow: '0 5px 15px rgba(0, 0, 0, 0.2)' }}
-              customDarkSquareStyle={{ backgroundColor: 'hsl(var(--primary))' }}
-              customLightSquareStyle={{ backgroundColor: 'hsl(var(--background))' }}
-              arePiecesDraggable={!isThinking && !gameOver}
+              customDarkSquareStyle={{ backgroundColor: 'hsl(var(--primary))' }} // Use primary color for dark squares
+              customLightSquareStyle={{ backgroundColor: 'hsl(var(--background))' }} // Use background for light squares
+              arePiecesDraggable={!isThinking && !gameOver && game.turn() === playerColor} // Only draggable on player's turn
             />
           </Card>
           {gameOver && (
@@ -363,8 +329,8 @@ export default function PlayPage() {
              <RotateCcw className="mr-2 h-4 w-4" /> Reset Game
            </Button>
             <div className="text-sm text-muted-foreground pt-2 border-t border-border">
-                 AI Engine: Gemini Pro <br/>
-                 Fallback: Random Move
+                 AI Engine: Gemini Flash <br/>
+                 {/* Fallback removed as it's handled by Genkit flow */}
             </div>
          </CardContent>
        </Card>
