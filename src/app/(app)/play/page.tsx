@@ -8,10 +8,10 @@ import { Chess, Move } from 'chess.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { RotateCcw, Info, Settings, BrainCircuit } from 'lucide-react'; // Using BrainCircuit for AI title
+import { RotateCcw, Info, Settings, BrainCircuit } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { LoaderCircle } from 'lucide-react';
-import { findBestChessMove, type FindBestChessMoveInput, type FindBestChessMoveOutput } from '@/ai/flows/find-best-chess-move'; // Import Genkit flow
+import { findBestChessMove, type FindBestChessMoveInput, type FindBestChessMoveOutput } from '@/ai/flows/find-best-chess-move';
 
 export default function PlayPage() {
   const [game, setGame] = useState(new Chess());
@@ -19,9 +19,32 @@ export default function PlayPage() {
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
   const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w');
   const [gameOver, setGameOver] = useState<{ reason: string; winner: string | null } | null>(null);
-  const [isThinking, setIsThinking] = useState(false); // General thinking state for AI
+  const [isThinking, setIsThinking] = useState(false);
   const { toast } = useToast();
-  const aiMoveRequestPending = useRef(false); // Flag to prevent duplicate AI move requests
+  const aiMoveRequestPending = useRef(false);
+
+
+   // Function to make a random legal move for the AI as a fallback
+   const makeRandomMove = useCallback(() => {
+     console.log("[Fallback] Making a random move.");
+     const gameCopy = new Chess(game.fen());
+     const possibleMoves = gameCopy.moves();
+     if (possibleMoves.length === 0) {
+       console.warn("[Fallback] No valid moves available for random selection.");
+       checkGameState(gameCopy); // Double check if game ended
+       setIsThinking(false);
+       aiMoveRequestPending.current = false;
+       return;
+     }
+     const randomIdx = Math.floor(Math.random() * possibleMoves.length);
+     const move = possibleMoves[randomIdx];
+     gameCopy.move(move);
+     setGame(gameCopy);
+     setFen(gameCopy.fen());
+     checkGameState(gameCopy);
+     // Do not call setIsThinking(false) here, it's handled in the caller (handleAiMove or findAiMove error)
+   }, [game]); // Dependency on game state
+
 
    // Check game state after each move
    const checkGameState = useCallback((currentGame: Chess) => {
@@ -51,12 +74,13 @@ export default function PlayPage() {
          aiMoveRequestPending.current = false; // Clear pending request
      } else {
          console.log("[checkGameState] Game continues.");
+         // Only reset gameOver if it was previously set
          if (gameOver !== null) {
-            console.log("[checkGameState] Resetting gameOver state to null.");
-            setGameOver(null);
+             console.log("[checkGameState] Resetting gameOver state to null as game continues.");
+             setGameOver(null);
          }
      }
-   }, [gameOver, toast]);
+   }, [gameOver, toast]); // Removed game dependency, pass currentGame explicitly
 
 
     // Handle AI move (received from Gemini or random fallback)
@@ -66,30 +90,26 @@ export default function PlayPage() {
         setIsThinking(false); // Turn off thinking indicator
 
         if (gameOver || game.turn() === playerColor) {
-            console.warn(`[handleAiMove] Received AI move ${moveNotation}, but game state is invalid. Ignoring.`, { gameOver, turn: game.turn(), playerColor });
+            console.warn(`[handleAiMove] Received AI move ${moveNotation}, but game state is invalid or not AI's turn. Ignoring.`, { gameOver, turn: game.turn(), playerColor });
             return;
         }
 
         if (moveNotation === null) {
-             console.warn("[handleAiMove] Received null move from AI. Handling this case (e.g., log, or potentially trigger fallback if needed).");
-             // toast({ title: "AI Decision", description: "AI could not determine a valid move.", variant: "default" });
-             // No automatic fallback here, let the error cascade or handle specifically if Gemini fails
-             checkGameState(game); // Check if the game ended due to no moves
-             return;
+             console.warn("[handleAiMove] Received null move from AI flow. Triggering fallback move.");
+             makeRandomMove(); // Trigger fallback if AI returns null
+             return; // Fallback handles state updates
         }
-
 
         const gameCopy = new Chess(game.fen());
         let moveResult: Move | null = null;
         try {
             console.log(`[handleAiMove] Attempting gameCopy.move(${moveNotation})`);
-            moveResult = gameCopy.move(moveNotation, { sloppy: true });
+            moveResult = gameCopy.move(moveNotation, { sloppy: true }); // Allow UCI moves directly
         } catch (error) {
             console.error(`[handleAiMove] Error applying move ${moveNotation} to FEN ${game.fen()} using chess.js:`, error);
-            // toast({ title: "AI Move Error", description: `Error applying AI move '${moveNotation}'.`, variant: "destructive" });
-            // Fallback on error is removed - let the flow handle errors.
-            checkGameState(game); // Check current state
-            return;
+            toast({ title: "AI Move Error", description: `Error applying AI move '${moveNotation}'. Attempting fallback.`, variant: "destructive" });
+            makeRandomMove(); // Fallback on error
+            return; // Fallback handles state updates
         }
 
         if (moveResult) {
@@ -98,12 +118,11 @@ export default function PlayPage() {
             setFen(gameCopy.fen()); // Trigger useEffect for turn check
             checkGameState(gameCopy);
         } else {
-            console.error(`[handleAiMove] Invalid AI move according to chess.js (moveResult was null): ${moveNotation} for FEN: ${game.fen()}.`);
-            // toast({ title: "Invalid AI Move", description: `Received invalid move from AI: ${moveNotation}.`, variant: "destructive" });
-            // Fallback is removed.
-            checkGameState(game); // Check current state
+            console.error(`[handleAiMove] Invalid AI move according to chess.js (moveResult was null): ${moveNotation} for FEN: ${game.fen()}. Triggering fallback.`);
+            toast({ title: "Invalid AI Move", description: `Received invalid move from AI: ${moveNotation}. Attempting fallback.`, variant: "destructive" });
+            makeRandomMove(); // Fallback on invalid move
         }
-    }, [game, gameOver, playerColor, toast, checkGameState]);
+    }, [game, gameOver, playerColor, toast, checkGameState, makeRandomMove]);
 
 
    // Function to request AI move from Gemini
@@ -138,37 +157,38 @@ export default function PlayPage() {
           const result: FindBestChessMoveOutput = await findBestChessMove(input);
           console.log("[findAiMove] Received result from Genkit flow:", result);
 
-          // Process result (handles success, error, no_valid_moves internally)
-          if (result.status === 'success' && result.bestMoveUci) {
-            handleAiMove(result.bestMoveUci);
-          } else if (result.status === 'no_valid_moves') {
-             console.warn("[findAiMove] Genkit flow reported no valid moves could be determined.");
-             handleAiMove(null); // Signal no move found
-             checkGameState(game); // Check if game over
-          } else { // Handle 'error' or unexpected null move
-             console.error(`[findAiMove] Genkit flow failed or returned unexpected result: Status ${result.status}, Move ${result.bestMoveUci}`);
-             // toast({ title: "AI Error", description: "The AI failed to determine a move.", variant: "destructive" });
-             // No fallback here, let the game state reflect the error
-             setIsThinking(false);
-             aiMoveRequestPending.current = false;
-             checkGameState(game); // Check current state
+          // Process result
+          if (result.status === 'success' && result.bestMoveUci && validMoves.includes(result.bestMoveUci)) {
+             // AI succeeded and provided a valid move
+             handleAiMove(result.bestMoveUci);
+          } else {
+             // Handle 'error', 'no_valid_moves', or invalid move from AI
+             if (result.bestMoveUci && !validMoves.includes(result.bestMoveUci)) {
+                console.warn(`[findAiMove] Genkit flow returned an invalid move: ${result.bestMoveUci}. It's not in the valid moves list. Triggering fallback.`);
+             } else {
+                console.error(`[findAiMove] Genkit flow failed, returned null, or reported no valid moves: Status ${result.status}, Move ${result.bestMoveUci}. Triggering fallback.`);
+             }
+             // Make a random move if AI fails or provides invalid move
+             makeRandomMove();
+             setIsThinking(false); // Ensure thinking state is reset after fallback
+             aiMoveRequestPending.current = false; // Ensure pending state is reset after fallback
           }
 
       } catch (error) {
           console.error("[findAiMove] Error calling Genkit flow:", error);
-          // toast({ title: "AI Error", description: `Failed to get AI move: ${error instanceof Error ? error.message : String(error)}.`, variant: "destructive" });
-          // Ensure state is consistent after error
+          toast({ title: "AI Error", description: `Failed to get AI move: ${error instanceof Error ? error.message : String(error)}. Attempting fallback.`, variant: "destructive" });
+          // Ensure state is consistent after error before fallback
+          makeRandomMove(); // Attempt fallback on error
           setIsThinking(false);
           aiMoveRequestPending.current = false;
-          checkGameState(game); // Check current state
       }
-   }, [game, gameOver, playerColor, isThinking, toast, handleAiMove, checkGameState]);
+   }, [game, gameOver, playerColor, isThinking, toast, handleAiMove, checkGameState, makeRandomMove]);
 
 
      // Trigger AI move when it's AI's turn
     useEffect(() => {
       console.log("[Turn Check Effect] Evaluating AI move trigger based on dependencies:", {
-        fen,
+        fen, // FEN change implies a move was made
         turn: game.turn(),
         playerColor,
         gameOver: !!gameOver,
@@ -176,56 +196,76 @@ export default function PlayPage() {
         aiMoveRequestPending: aiMoveRequestPending.current
        });
 
+      // Check if the game is not over AND it's AI's turn AND AI is not already thinking AND no request is pending
       if (!gameOver && game.turn() !== playerColor && !isThinking && !aiMoveRequestPending.current) {
         console.log("[Turn Check Effect] Conditions met, scheduling AI move check via findAiMove timer.");
+        // Use a timer to slightly delay the AI move request for better UX (prevents instant move)
         const timer = setTimeout(() => {
           console.log("[Turn Check Timer] Timer fired, calling findAiMove.");
           findAiMove();
-        }, 500); // Delay for API call UX
+        }, 500); // Delay AI move slightly
+        // Cleanup function to clear the timer if dependencies change before it fires
         return () => {
              console.log("[Turn Check Timer] Clearing AI move timer due to dependency change or unmount.");
              clearTimeout(timer);
         }
       } else {
          console.log("[Turn Check Effect] Conditions NOT met for triggering AI move.");
+         // Log why it didn't trigger if needed
+         if (gameOver) console.log("[Turn Check Effect] Reason: Game is over.");
+         if (game.turn() === playerColor) console.log("[Turn Check Effect] Reason: It's player's turn.");
+         if (isThinking) console.log("[Turn Check Effect] Reason: AI is already thinking.");
+         if (aiMoveRequestPending.current) console.log("[Turn Check Effect] Reason: AI move request is already pending.");
       }
-    }, [fen, playerColor, gameOver, isThinking, game, findAiMove]);
+      // Dependencies:
+      // - fen: Changes when a move is made, triggering re-evaluation.
+      // - playerColor: Changes if the player switches sides.
+      // - gameOver: Changes when the game ends.
+      // - isThinking: Changes when AI starts/stops thinking.
+      // - game: Reference to the game object (ensure callbacks use latest state)
+      // - findAiMove: The function to call (stable due to useCallback).
+    }, [fen, playerColor, gameOver, isThinking, game, findAiMove]); // Ensure all relevant states are dependencies
 
 
    // Handle player move attempt
    function onDrop(sourceSquare: Square, targetSquare: Square, piece: Piece): boolean {
      console.log(`[Player Move Attempt] ${piece} from ${sourceSquare} to ${targetSquare}`);
+     // Prevent move if game over, AI is thinking, or not player's turn
      if (gameOver || isThinking || game.turn() !== playerColor) {
          console.log("[Player Move] Blocked:", { gameOver, isThinking, turn: game.turn(), playerColor });
          toast({ title: "Wait", description: gameOver ? "Game is over." : (isThinking ? "AI is thinking..." : "Not your turn."), variant: "default" });
-         return false;
+         return false; // Indicate move was not made
      }
 
-     const gameCopy = new Chess(game.fen());
+     const gameCopy = new Chess(game.fen()); // Create a copy to try the move
      let moveResult = null;
      try {
+       // Attempt the move
        moveResult = gameCopy.move({
          from: sourceSquare,
          to: targetSquare,
-         promotion: 'q', // Auto-promote to queen
+         promotion: 'q', // Automatically promote to Queen for simplicity
        });
 
+       // Check if the move was valid (chess.js returns null for illegal moves)
        if (moveResult === null) {
            console.warn(`[Player Move] Illegal move attempted: ${sourceSquare}-${targetSquare}`);
            toast({ title: "Invalid Move", description: "That move is not allowed.", variant: "default" });
-           return false;
+           return false; // Indicate move was not made
        }
 
+       // If move is valid:
        console.log(`[Player Move] Move successful: ${moveResult.san}. New FEN: ${gameCopy.fen()}`);
-       setGame(gameCopy);
-       setFen(gameCopy.fen()); // Triggers useEffect for AI turn
-       checkGameState(gameCopy);
-       return true;
+       setGame(gameCopy); // Update the main game state
+       setFen(gameCopy.fen()); // Update FEN state to trigger re-renders and effects
+       checkGameState(gameCopy); // Check if this move ended the game
+       return true; // Indicate move was successful
 
      } catch (error) {
+       // Catch potential errors during move execution (though chess.js usually returns null for invalid moves)
        console.error(`[Player Move] Error processing move ${sourceSquare}-${targetSquare}:`, error);
        toast({ title: "Move Error", description: "An error occurred processing your move.", variant: "destructive" });
-       return false;
+       return false; // Indicate move failed due to error
      }
    }
 
@@ -233,57 +273,64 @@ export default function PlayPage() {
     // Reset the game
     const resetGame = useCallback((newPlayerColor = playerColor) => {
       console.log(`[Game Reset] Resetting game. Player will be: ${newPlayerColor === 'w' ? 'White' : 'Black'}`);
+      // Cancel any pending AI requests (though usually handled by state checks)
       if (isThinking || aiMoveRequestPending.current) {
-          console.log("[Game Reset] Cancelling pending AI request.");
-          // No 'stop' command for Gemini, just prevent processing the result
-          aiMoveRequestPending.current = false; // Prevent processing response
-          setIsThinking(false); // Force UI update
+          console.log("[Game Reset] Cancelling pending AI request or thinking state.");
+          aiMoveRequestPending.current = false; // Prevent processing any lingering response
+          setIsThinking(false); // Force UI update if it was stuck thinking
       }
 
-      const newGame = new Chess();
+      const newGame = new Chess(); // Create a fresh game instance
       setGame(newGame);
-      setFen(newGame.fen());
-      setGameOver(null);
-      setIsThinking(false);
-      setPlayerColor(newPlayerColor);
-      setOrientation(newPlayerColor === 'w' ? 'white' : 'black');
+      setFen(newGame.fen()); // Update FEN
+      setGameOver(null); // Clear game over state
+      setIsThinking(false); // Ensure thinking is off
+      setPlayerColor(newPlayerColor); // Set the chosen player color
+      setOrientation(newPlayerColor === 'w' ? 'white' : 'black'); // Set board orientation
       console.log("[Game Reset] React state updated.");
 
-      // The useEffect hook [fen, playerColor, ...] will handle triggering the AI if it's AI's turn.
+      // The useEffect hook watching `fen`, `playerColor`, etc., will automatically
+      // trigger the AI's first move if it's Black's turn after reset.
       console.log("[Game Reset] Game reset process complete.");
-    }, [playerColor, isThinking]);
+    }, [playerColor, isThinking]); // Dependencies: playerColor (for default), isThinking (for cancellation)
 
 
     // Choose player color (resets game)
     const chooseColor = useCallback((color: 'w' | 'b') => {
       console.log(`[Color Choice] Player chose ${color === 'w' ? 'White' : 'Black'}.`);
+      // Only reset if the color actually changes
       if (color !== playerColor) {
          resetGame(color);
       }
-    }, [playerColor, resetGame]);
+    }, [playerColor, resetGame]); // Dependencies: playerColor (to check if change needed), resetGame (the action)
 
 
    return (
      <div className="flex flex-col lg:flex-row gap-6 p-4 md:p-6 lg:p-8 items-start">
+       {/* Chessboard Section */}
        <div className="w-full lg:w-2/3 xl:w-1/2 mx-auto">
           <Card className="shadow-xl rounded-lg overflow-hidden bg-card border-4 border-primary relative">
+            {/* Loading/Thinking Overlay */}
             {isThinking && (
               <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-lg">
                 <LoaderCircle className="h-12 w-12 text-accent animate-spin" />
                 <p className="text-accent-foreground font-semibold mt-2">AI is thinking...</p>
               </div>
             )}
+            {/* The Chessboard Component */}
             <Chessboard
-              key={fen + orientation} // Re-render on FEN or orientation change
+              key={fen + orientation} // Force re-render on FEN or orientation change for reliability
               position={fen}
-              onPieceDrop={onDrop}
-              boardOrientation={orientation}
+              onPieceDrop={onDrop} // Handle player moves
+              boardOrientation={orientation} // White or Black at bottom
               customBoardStyle={{ borderRadius: '4px', boxShadow: '0 5px 15px rgba(0, 0, 0, 0.2)' }}
-              customDarkSquareStyle={{ backgroundColor: 'hsl(var(--primary))' }} // Use primary color for dark squares
-              customLightSquareStyle={{ backgroundColor: 'hsl(var(--background))' }} // Use background for light squares
-              arePiecesDraggable={!isThinking && !gameOver && game.turn() === playerColor} // Only draggable on player's turn
+              customDarkSquareStyle={{ backgroundColor: 'hsl(var(--primary))' }}
+              customLightSquareStyle={{ backgroundColor: 'hsl(var(--background))' }}
+              // Disable dragging pieces if AI is thinking, game is over, or not player's turn
+              arePiecesDraggable={!isThinking && !gameOver && game.turn() === playerColor}
             />
           </Card>
+          {/* Game Over Alert */}
           {gameOver && (
             <Alert variant={gameOver.winner === 'Draw' ? 'default' : 'destructive'} className="mt-4 bg-accent/10 border-accent text-accent-foreground rounded-lg shadow-md">
               <Info className="h-5 w-5 text-accent" />
@@ -291,6 +338,7 @@ export default function PlayPage() {
               <AlertDescription>
                 {gameOver.reason}. {gameOver.winner !== 'Draw' ? `${gameOver.winner} wins!` : "It's a draw."}
               </AlertDescription>
+                {/* Play Again Button */}
                 <Button onClick={() => resetGame()} variant="default" size="sm" className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
                   Play Again?
                 </Button>
@@ -298,6 +346,7 @@ export default function PlayPage() {
           )}
        </div>
 
+       {/* Game Controls Section */}
        <Card className="w-full lg:w-1/3 xl:w-1/4 shadow-lg rounded-lg bg-card border border-border">
          <CardHeader>
            <CardTitle className="text-primary flex items-center justify-between">
@@ -306,11 +355,14 @@ export default function PlayPage() {
            </CardTitle>
          </CardHeader>
          <CardContent className="space-y-4">
+           {/* Color Selection Buttons */}
            <div className="flex gap-2">
               <Button
                 onClick={() => chooseColor('w')}
                 variant={playerColor === 'w' ? 'default' : 'outline'}
+                // Apply specific styles based on selection and theme
                 className={`flex-1 ${playerColor === 'w' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border-primary text-primary hover:bg-primary/10'}`}
+                // Disable if AI thinking or already playing as White
                 disabled={isThinking || playerColor === 'w'}
               >
                 Play as White
@@ -325,12 +377,13 @@ export default function PlayPage() {
               </Button>
             </div>
 
+           {/* Reset Game Button */}
            <Button onClick={() => resetGame()} variant="destructive" className="w-full" disabled={isThinking && !gameOver}>
              <RotateCcw className="mr-2 h-4 w-4" /> Reset Game
            </Button>
+            {/* AI Engine Info */}
             <div className="text-sm text-muted-foreground pt-2 border-t border-border">
-                 AI Engine: Gemini Flash <br/>
-                 {/* Fallback removed as it's handled by Genkit flow */}
+                 AI Engine: Gemini Flash
             </div>
          </CardContent>
        </Card>
