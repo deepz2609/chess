@@ -26,7 +26,8 @@ export default function DashboardPage() {
              <UserCircle className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{user?.displayName || user?.email || 'Player'}</div>
+            {/* Changed text-2xl to text-xl */}
+            <div className="text-xl font-bold">{user?.displayName || user?.email || 'Player'}</div>
             <p className="text-xs text-muted-foreground">
               Ready for your next challenge?
             </p>
