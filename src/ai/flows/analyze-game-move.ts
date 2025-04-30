@@ -69,4 +69,3 @@ async input => {
   const {output} = await analyzeGameMovePrompt(input);
   return output!;
 });
-

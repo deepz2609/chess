@@ -10,6 +10,7 @@ import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { SidebarTrigger } from "@/components/ui/sidebar"; // Import SidebarTrigger
+import Link from "next/link"; // Import Link
 
 export function AppHeader() {
   const { user } = useAuth();
@@ -62,14 +63,18 @@ export function AppHeader() {
              </div>
            </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="cursor-pointer hover:bg-accent/10">
-            <User className="mr-2 h-4 w-4" />
-            <span>Profile</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer hover:bg-accent/10">
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Settings</span>
-          </DropdownMenuItem>
+           <Link href="/profile" passHref legacyBehavior>
+             <DropdownMenuItem className="cursor-pointer hover:bg-accent/10">
+               <User className="mr-2 h-4 w-4" />
+               <span>Profile</span>
+             </DropdownMenuItem>
+           </Link>
+           <Link href="/settings" passHref legacyBehavior>
+             <DropdownMenuItem className="cursor-pointer hover:bg-accent/10">
+               <Settings className="mr-2 h-4 w-4" />
+               <span>Settings</span>
+             </DropdownMenuItem>
+          </Link>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive">
             <LogOut className="mr-2 h-4 w-4" />

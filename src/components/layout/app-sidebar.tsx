@@ -11,7 +11,6 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarGroupContent, // Import SidebarGroupContent
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';

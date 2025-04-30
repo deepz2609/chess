@@ -10,6 +10,7 @@ This is a Next.js web application built with Firebase Studio that allows users t
 *   AI opponent using Google Gemini via Genkit.
     *   The AI analyzes the board state (FEN) and selects the best move from the list of valid moves.
     *   Move validation ensures the AI selects a legal move.
+    *   Fallback to a random move if the AI fails or returns an invalid move.
 *   Basic dashboard, profile, and settings pages.
 *   Styling with Tailwind CSS and ShadCN UI components.
 *   Protected routes for authenticated users.
@@ -21,8 +22,12 @@ This is a Next.js web application built with Firebase Studio that allows users t
     npm install
     ```
 2.  **Set up Environment Variables:**
-    Create a `.env.local` file in the root directory and add your Firebase project configuration and Google Generative AI API key:
+    Create a `.env` file in the root directory (or rename `.env.local` if it exists) and add your Firebase project configuration and Google Generative AI API key:
     ```env
+    # Replace with your actual Firebase and Genkit configuration
+    # See README.md for instructions on how to get these values
+
+    # Firebase Project Configuration (obtain from Firebase console)
     NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_FIREBASE_API_KEY
     NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_FIREBASE_AUTH_DOMAIN
     NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_FIREBASE_PROJECT_ID
@@ -31,9 +36,10 @@ This is a Next.js web application built with Firebase Studio that allows users t
     NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_FIREBASE_APP_ID
     NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=YOUR_FIREBASE_MEASUREMENT_ID
 
-    # Get your Gemini API key from Google AI Studio
+    # Google Generative AI API Key (obtain from Google AI Studio)
     GOOGLE_GENAI_API_KEY=YOUR_GEMINI_API_KEY
     ```
+    **Important:** Replace `YOUR_FIREBASE_...` and `YOUR_GEMINI_API_KEY` with your actual credentials.
 3.  **Run Genkit Dev Server (for AI flow development/testing):**
     ```bash
     npm run genkit:dev
