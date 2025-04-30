@@ -12,6 +12,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarGroupContent, // Import SidebarGroupContent
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { LogOut, Home, Settings, LayoutDashboard, Swords, User } from 'lucide-react'; // Added Swords for 'Play Game'
