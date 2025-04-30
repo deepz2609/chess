@@ -4,7 +4,7 @@ import type { User } from "firebase/auth";
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { Skeleton } from "@/components/ui/skeleton"; // Use Skeleton for loading state
+// Removed Skeleton import as ProtectedRoute handles loading display
 
 interface AuthContextProps {
   user: User | null;
@@ -18,25 +18,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    // Listen for authentication state changes
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
       setLoading(false);
+       // console.log("Auth State Changed:", currentUser ? currentUser.uid : 'No user'); // Optional: Log auth changes
     });
 
     // Cleanup subscription on unmount
-    return () => unsubscribe();
-  }, []);
+    return () => {
+       // console.log("Unsubscribing auth listener"); // Optional: Log cleanup
+       unsubscribe();
+    }
+  }, []); // Empty dependency array ensures this runs only once on mount
 
-  // Show a loading state while checking auth status
-  if (loading) {
-    return (
-       <div className="flex items-center justify-center h-screen">
-         <Skeleton className="w-1/2 h-1/2 rounded-lg" />
-       </div>
-     );
-  }
-
-
+  // The value provided by the context includes the user and loading state.
+  // Components consuming this context (like ProtectedRoute) will handle conditional rendering based on these values.
+  // No need to render a loading state directly within the provider itself.
   return (
     <AuthContext.Provider value={{ user, loading }}>
       {children}
@@ -44,4 +42,5 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
+// Custom hook to use the auth context
 export const useAuth = () => useContext(AuthContext);
