@@ -15,11 +15,13 @@ import { useToast } from "@/hooks/use-toast";
 // Dynamically import stockfish.js to ensure it runs client-side
 const stockfishPath = '/stockfish.js/stockfish.js'; // Path to the worker script
 
+const AI_DEPTH = 10; // Define AI thinking depth
+
 export default function PlayPage() {
   const [game, setGame] = useState(new Chess());
   const [fen, setFen] = useState(game.fen());
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
-  const [difficulty, setDifficulty] = useState(5); // Stockfish difficulty level (0-20)
+  const [difficulty, setDifficulty] = useState(5); // Stockfish difficulty level (0-20) - Note: Depth overrides this for 'go depth' command
   const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w');
   const [gameOver, setGameOver] = useState<{ reason: string; winner: string | null } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
@@ -50,6 +52,7 @@ export default function PlayPage() {
                 console.log("Stockfish UCI OK received.");
                 // Proceed with configuration only after uciok
                 stockfishWorker.current?.postMessage('isready');
+                // Send Skill Level anyway, although 'go depth' might override it
                 stockfishWorker.current?.postMessage(`setoption name Skill Level value ${difficulty}`);
              } else if (message === 'readyok') {
                  console.log("Stockfish Ready OK received.");
@@ -70,7 +73,8 @@ export default function PlayPage() {
                  const depthMatch = message.match(/depth (\d+)/);
                  if (depthMatch) {
                      const currentDepth = parseInt(depthMatch[1], 10);
-                     const progress = Math.min(100, (currentDepth / 20) * 100); // Assuming max depth ~20 for progress
+                     // Update progress based on the defined AI_DEPTH
+                     const progress = Math.min(100, (currentDepth / AI_DEPTH) * 100);
                      setThinkingProgress(progress);
                  }
              }
@@ -109,7 +113,7 @@ export default function PlayPage() {
         }
      };
    // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [difficulty, toast]); // Re-initialize only if difficulty changes
+   }, [difficulty, toast]); // Re-initialize only if difficulty changes (Skill Level setting)
 
 
   // Function to make AI move
@@ -119,15 +123,16 @@ export default function PlayPage() {
         return;
      }
 
-     console.log(`[AI Turn] Requesting move for FEN: ${game.fen()}`);
+     console.log(`[AI Turn] Requesting move for FEN: ${game.fen()} with depth ${AI_DEPTH}`);
      setIsThinking(true);
      moveRequestPending.current = true; // Set flag
      setThinkingProgress(0); // Reset progress
      try {
          console.log(`[Stockfish Worker] Sending: position fen ${game.fen()}`);
          stockfishWorker.current.postMessage(`position fen ${game.fen()}`);
-         console.log("[Stockfish Worker] Sending: go depth 15");
-         stockfishWorker.current.postMessage(`go depth 15`); // Adjust depth for difficulty/performance balance
+         console.log(`[Stockfish Worker] Sending: go depth ${AI_DEPTH}`);
+         // Use the defined AI_DEPTH constant
+         stockfishWorker.current.postMessage(`go depth ${AI_DEPTH}`);
      } catch (error) {
          console.error("Error sending message to Stockfish worker:", error);
          toast({ title: "AI Communication Error", description: "Failed to send command to AI.", variant: "destructive" });
@@ -371,3 +376,5 @@ export default function PlayPage() {
     </div>
   );
 }
+
+    
