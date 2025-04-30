@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 // Dynamically import stockfish.js to ensure it runs client-side
 const stockfishPath = '/stockfish.js/stockfish.js'; // Path to the worker script
 
-const AI_DEPTH = 5; // Define AI thinking depth (reduced from 10 for faster response)
+const AI_DEPTH = 5; // Define AI thinking depth
 
 export default function PlayPage() {
   const [game, setGame] = useState(new Chess());
@@ -34,10 +34,10 @@ export default function PlayPage() {
    // Initialize Stockfish via Web Worker
    useEffect(() => {
      if (typeof Worker !== 'undefined') {
-       console.log("Attempting to initialize Stockfish worker...");
+       console.log("[Worker Init] Attempting to initialize Stockfish worker...");
        // Check if worker already exists to avoid multiple initializations on HMR
        if (stockfishWorker.current) {
-            console.log("Terminating existing Stockfish worker before re-initialization.");
+            console.log("[Worker Init] Terminating existing Stockfish worker before re-initialization.");
             stockfishWorker.current.terminate();
             stockfishWorker.current = null;
             moveRequestPending.current = false; // Reset flags
@@ -46,35 +46,41 @@ export default function PlayPage() {
 
        try {
            stockfishWorker.current = new Worker(stockfishPath);
-           console.log("Stockfish worker instance created.");
+           console.log("[Worker Init] Stockfish worker instance created.");
            engineReady.current = false; // Reset ready state on new worker
 
            stockfishWorker.current.onmessage = (event) => {
              const message = event.data;
-             console.log(`[Stockfish Worker] Received: ${message}`); // Log all messages
+             console.log(`[Worker Msg Recv] Received: ${message}`); // Log all messages
 
              if (message?.startsWith('uciok')) {
-                console.log("Stockfish UCI OK received. Sending 'isready'.");
+                console.log("[Worker Msg Recv] Stockfish UCI OK received. Sending 'isready'.");
                 stockfishWorker.current?.postMessage('isready');
              } else if (message === 'readyok') {
-                 console.log("Stockfish Ready OK received. Engine is ready.");
+                 console.log("[Worker Msg Recv] Stockfish Ready OK received. Engine is ready.");
                  engineReady.current = true; // Engine is fully ready
                  // Check if AI needs to move immediately (e.g., player chose black on initial load/reset)
                  if (game.turn() !== playerColor && !isThinking && !moveRequestPending.current) {
-                    console.log("Engine ready, and it's AI's turn. Triggering AI move check.");
-                    findAiMove();
+                    console.log("[Worker Msg Recv] Engine ready, and it's AI's turn. Triggering AI move check via findAiMove.");
+                    findAiMove(); // Attempt to move if conditions are right
+                 } else {
+                    console.log("[Worker Msg Recv] Engine ready, but AI move not triggered:", { turn: game.turn(), playerColor, isThinking, moveRequestPending: moveRequestPending.current });
                  }
              } else if (message?.startsWith('bestmove')) {
                const bestMove = message.split(' ')[1];
+               console.log(`[Worker Msg Recv] Received bestmove command: ${message}`);
                // Reset flag *before* processing move to allow new requests if needed immediately
                moveRequestPending.current = false;
+               setIsThinking(false); // AI is no longer thinking
+
                if (bestMove && bestMove !== '(none)') {
-                   console.log(`[AI Move] Received bestmove: ${bestMove}`);
+                   console.log(`[Worker Msg Recv] Extracted bestMove: ${bestMove}. Calling handleAiMove.`);
                    handleAiMove(bestMove);
                } else {
-                   console.error("[AI Error] Stockfish returned no valid bestmove or '(none)'.");
+                   console.error("[AI Error] Stockfish returned no valid bestmove or '(none)'. Resetting state.");
                    toast({ title: "AI Error", description: "AI could not determine a move.", variant: "destructive" });
-                   setIsThinking(false); // Stop thinking indicator
+                   // Don't set isThinking false here, already done above
+                   // Do NOT reset moveRequestPending here, it was just reset above
                }
              } else if (message?.includes("info depth")) {
                  const depthMatch = message.match(/depth (\d+)/);
@@ -82,15 +88,21 @@ export default function PlayPage() {
                      const currentDepth = parseInt(depthMatch[1], 10);
                      // Update progress based on the defined AI_DEPTH
                      const progress = Math.min(100, (currentDepth / AI_DEPTH) * 100);
-                    //  console.log(`[AI Progress] Depth: ${currentDepth}, Progress: ${progress}%`); // Can be noisy
+                     // console.log(`[AI Progress] Depth: ${currentDepth}, Progress: ${progress}%`); // Can be noisy
                      setThinkingProgress(progress);
                  }
+             } else if (message?.startsWith('error:')) {
+                 console.error(`[Worker Msg Recv] Received error from worker: ${message}`);
+                 toast({ title: "Stockfish Worker Error", description: message, variant: "destructive" });
+                 setIsThinking(false);
+                 moveRequestPending.current = false;
+                 engineReady.current = false; // Assume engine is not usable after error
              }
              // Add handling for other potential Stockfish messages if needed
            };
 
            stockfishWorker.current.onerror = (error) => {
-              console.error('[Stockfish Worker] Error:', error.message, error);
+              console.error('[Worker Init] Stockfish Worker onerror event:', error.message, error);
               toast({ title: "Stockfish Error", description: `Worker error: ${error.message}`, variant: "destructive" });
               setIsThinking(false); // Ensure thinking stops on error
               moveRequestPending.current = false; // Reset pending flag
@@ -98,28 +110,30 @@ export default function PlayPage() {
            };
 
            // Initiate communication
-           console.log("[Stockfish Worker] Sending: uci");
+           console.log("[Worker Init] Sending: uci");
            stockfishWorker.current.postMessage('uci');
 
        } catch (e) {
-           console.error("Failed to create Stockfish worker:", e);
+           console.error("[Worker Init] Failed to create Stockfish worker:", e);
            toast({ title: "Worker Error", description: "Could not create AI engine worker.", variant: "destructive" });
        }
 
 
      } else {
-       console.error("Web Workers are not supported in this browser.");
+       console.error("[Worker Init] Web Workers are not supported in this browser.");
        toast({ title: "Browser Incompatible", description: "Web Workers are needed for the AI engine.", variant: "destructive" });
      }
 
      // Cleanup worker on unmount
      return () => {
         if (stockfishWorker.current) {
-            console.log("Terminating Stockfish worker on component unmount...");
+            console.log("[Worker Cleanup] Terminating Stockfish worker on component unmount...");
             stockfishWorker.current.terminate();
             stockfishWorker.current = null;
             moveRequestPending.current = false;
             engineReady.current = false;
+        } else {
+            console.log("[Worker Cleanup] No Stockfish worker to terminate.");
         }
      };
    // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,86 +142,124 @@ export default function PlayPage() {
 
   // Function to make AI move
   const findAiMove = useCallback(() => {
+     console.log("[findAiMove] Attempting to trigger AI move. Checking conditions...");
      // Guard conditions: Check worker, game over, turn, thinking state, pending request, and engine readiness
-     if (!stockfishWorker.current || !engineReady.current || gameOver || game.turn() === playerColor || isThinking || moveRequestPending.current) {
-        console.log("AI move request skipped:", {
-          worker: !!stockfishWorker.current,
-          ready: engineReady.current,
-          gameOver: !!gameOver,
-          turn: game.turn(),
-          playerColor,
-          isThinking,
-          moveRequestPending: moveRequestPending.current
-        });
+     if (!stockfishWorker.current) {
+        console.warn("[findAiMove] AI move skipped: Stockfish worker not available.");
         return;
      }
+     if (!engineReady.current) {
+        console.warn("[findAiMove] AI move skipped: Engine not ready (engineReady.current is false).");
+        return;
+     }
+      if (gameOver) {
+        console.log("[findAiMove] AI move skipped: Game is over.", gameOver);
+        return;
+     }
+     if (game.turn() === playerColor) {
+        console.log("[findAiMove] AI move skipped: It's the player's turn.", { turn: game.turn(), playerColor });
+        return;
+     }
+     if (isThinking) {
+        console.log("[findAiMove] AI move skipped: AI is already thinking.");
+        return;
+     }
+     if (moveRequestPending.current) {
+         console.log("[findAiMove] AI move skipped: A move request is already pending.");
+         return;
+     }
+
 
      const currentFen = game.fen(); // Get current FEN reliably
-     console.log(`[AI Turn] Requesting move for FEN: ${currentFen} with depth ${AI_DEPTH}`);
+     console.log(`[findAiMove] Conditions met. Requesting move for FEN: ${currentFen} with depth ${AI_DEPTH}`);
      setIsThinking(true);
      moveRequestPending.current = true; // Set flag: move requested
      setThinkingProgress(0); // Reset progress
 
      try {
-         console.log(`[Stockfish Worker] Sending: position fen ${currentFen}`);
+         console.log(`[findAiMove] Sending command to worker: position fen ${currentFen}`);
          stockfishWorker.current.postMessage(`position fen ${currentFen}`);
          // Add a small delay between position and go, sometimes helps Stockfish.js
          setTimeout(() => {
-            if (moveRequestPending.current && stockfishWorker.current) { // Check if still pending
-                console.log(`[Stockfish Worker] Sending: go depth ${AI_DEPTH}`);
+            // Re-check conditions before sending 'go', especially if worker/request changed
+            if (moveRequestPending.current && stockfishWorker.current && engineReady.current && isThinking) {
+                console.log(`[findAiMove] Sending command to worker: go depth ${AI_DEPTH}`);
                 stockfishWorker.current.postMessage(`go depth ${AI_DEPTH}`);
             } else {
-                console.log("[Stockfish Worker] Move request cancelled before sending 'go depth'.");
+                console.log("[findAiMove] Move request cancelled or state changed before sending 'go depth'. Resetting flags.", {
+                    moveRequestPending: moveRequestPending.current,
+                    worker: !!stockfishWorker.current,
+                    engineReady: engineReady.current,
+                    isThinking
+                });
+                // If 'go' wasn't sent, we should reset the state
+                setIsThinking(false);
+                moveRequestPending.current = false;
             }
-         }, 100); // 100ms delay
+         }, 150); // 150ms delay (slightly increased)
 
      } catch (error) {
-         console.error("Error sending message to Stockfish worker:", error);
+         console.error("[findAiMove] Error sending message to Stockfish worker:", error);
          toast({ title: "AI Communication Error", description: "Failed to send command to AI.", variant: "destructive" });
          setIsThinking(false);
          moveRequestPending.current = false; // Reset flag on error
      }
-  // Include 'game' in dependencies as its state (FEN, turn) is crucial
-  }, [game, gameOver, playerColor, isThinking]);
+  // Include dependencies relevant to the guards and actions within findAiMove
+  }, [game, gameOver, playerColor, isThinking, toast]); // engineReady is a ref, stockfishWorker is a ref - they don't trigger re-renders/re-creation of this callback
 
 
   // Handle AI move received from Stockfish
   const handleAiMove = (moveNotation: string) => {
-    console.log(`[AI Move] Processing UCI move: ${moveNotation}`);
+    console.log(`[handleAiMove] Processing UCI move received from worker: ${moveNotation}`);
+    // Ensure it's still AI's turn and game isn't over, though checks in findAiMove should prevent this call otherwise.
+    // This is a safety check.
+    if (gameOver || game.turn() === playerColor) {
+        console.warn(`[handleAiMove] Received AI move ${moveNotation}, but game state is invalid. Ignoring.`, { gameOver, turn: game.turn(), playerColor });
+        // Reset thinking state just in case it got stuck
+        setIsThinking(false);
+        // moveRequestPending was already reset when 'bestmove' was received
+        return;
+    }
+
     const gameCopy = new Chess(game.fen()); // Create copy from *current* game state FEN
+    console.log(`[handleAiMove] Created game copy. Current FEN: ${game.fen()}`);
     let moveResult = null;
     try {
         // Apply the move notation from Stockfish (e.g., 'e2e4')
+        console.log(`[handleAiMove] Attempting gameCopy.move(${moveNotation})`);
         moveResult = gameCopy.move(moveNotation, { sloppy: true }); // Use sloppy: true for UCI format compatibility
     } catch (error) {
-         console.error(`[AI Move] Error applying move ${moveNotation} to FEN ${game.fen()}:`, error);
+         console.error(`[handleAiMove] Error applying move ${moveNotation} to FEN ${game.fen()} using chess.js:`, error);
          toast({ title: "AI Error", description: `Error applying AI move '${moveNotation}'. Please reset if issue persists.`, variant: "destructive" });
-         setIsThinking(false); // Stop thinking indicator on error
-         // Do NOT reset moveRequestPending here, it was reset on receiving 'bestmove'
+         // Reset thinking state
+         setIsThinking(false);
+         // moveRequestPending was already reset when 'bestmove' was received
          return; // Stop execution here
     }
 
-
     if (moveResult) {
-      console.log(`[AI Move] Applied successfully. SAN: ${moveResult.san}, New FEN: ${gameCopy.fen()}`);
+      console.log(`[handleAiMove] chess.js applied move successfully. SAN: ${moveResult.san}, New FEN: ${gameCopy.fen()}`);
       // Update state in sequence: game object first, then FEN string
       setGame(gameCopy);
       setFen(gameCopy.fen()); // This update will trigger the useEffect for turn check if necessary
-      setIsThinking(false); // AI finished thinking
+      // Thinking state was reset on receiving 'bestmove'
       setThinkingProgress(100); // Show complete progress momentarily
+      console.log(`[handleAiMove] Game state updated. Calling checkGameState.`);
       checkGameState(gameCopy); // Check if the AI's move ended the game
     } else {
       // This case should ideally not happen if Stockfish provides a valid UCI move
       // and chess.js handles it, but good to have a fallback.
-      console.error(`[AI Move] Invalid AI move according to chess.js: ${moveNotation} for FEN: ${game.fen()}. Game state not changed.`);
+      console.error(`[handleAiMove] Invalid AI move according to chess.js (moveResult was null): ${moveNotation} for FEN: ${game.fen()}. Game state not changed.`);
       toast({ title: "AI Error", description: `Received invalid move from AI: ${moveNotation}`, variant: "destructive" });
-      setIsThinking(false); // Stop thinking indicator on error
-      // Do NOT reset moveRequestPending here
+      // Reset thinking state
+      setIsThinking(false);
+       // moveRequestPending was already reset when 'bestmove' was received
     }
   };
 
    // Check game state after each move
    const checkGameState = (currentGame: Chess) => {
+     console.log(`[checkGameState] Checking game state for FEN: ${currentGame.fen()}`);
      let currentGameOver = null;
      if (currentGame.isCheckmate()) {
        currentGameOver = { reason: 'Checkmate', winner: currentGame.turn() === 'w' ? 'Black' : 'White' };
@@ -221,18 +273,19 @@ export default function PlayPage() {
      } else if (currentGame.isInsufficientMaterial()) {
        currentGameOver = { reason: 'Insufficient Material', winner: 'Draw' };
        toast({ title: "Game Over!", description: "Draw by Insufficient Material." });
-     } else if (currentGame.isDraw()) {
-       currentGameOver = { reason: 'Draw', winner: 'Draw' }; // Covers 50-move rule
-       toast({ title: "Game Over!", description: "The game is a draw." });
+     } else if (currentGame.isDraw()) { // Includes 50-move rule
+       currentGameOver = { reason: 'Draw', winner: 'Draw' };
+       toast({ title: "Game Over!", description: "The game is a draw (50-move rule or other draw condition)." });
      }
 
      if (currentGameOver) {
-         console.log(`[Game State] Game over: ${currentGameOver.reason}, Winner: ${currentGameOver.winner}`);
+         console.log(`[checkGameState] Game over detected: ${currentGameOver.reason}, Winner: ${currentGameOver.winner}. Updating state.`);
          setGameOver(currentGameOver);
      } else {
-         // console.log("[Game State] Game continues."); // Can be noisy, uncomment if needed
+         console.log("[checkGameState] Game continues.");
          // Only set to null if it's currently not null, avoids unnecessary re-renders
          if (gameOver !== null) {
+            console.log("[checkGameState] Resetting gameOver state to null.");
             setGameOver(null);
          }
      }
@@ -240,34 +293,58 @@ export default function PlayPage() {
 
     // Trigger AI move when it's AI's turn - RELIES on FEN change or playerColor change
    useEffect(() => {
-     console.log("[Turn Check Effect] Evaluating AI move trigger:", { fen, turn: game.turn(), playerColor, gameOver: !!gameOver, isThinking, engineReady: engineReady.current, moveRequestPending: moveRequestPending.current });
+     console.log("[Turn Check Effect] Evaluating AI move trigger based on dependencies:", {
+       fen, // Current FEN state
+       turn: game.turn(), // Whose turn it is according to game object
+       playerColor, // Which color the player controls
+       gameOver: !!gameOver, // Is the game over?
+       isThinking, // Is the AI already thinking?
+       engineReady: engineReady.current, // Is the engine ready?
+       moveRequestPending: moveRequestPending.current // Is a move request already out?
+      });
+
      // Check all conditions *including* engine readiness
      if (engineReady.current && !gameOver && game.turn() !== playerColor && !isThinking && !moveRequestPending.current) {
-       console.log("[Turn Check Effect] Conditions met, scheduling AI move check via findAiMove...");
+       console.log("[Turn Check Effect] Conditions met, scheduling AI move check via findAiMove timer.");
        // Add a small delay for better UX and to allow state updates to settle fully
        const timer = setTimeout(() => {
          console.log("[Turn Check Timer] Timer fired, calling findAiMove.");
          findAiMove(); // This function already contains guards
-       }, 300); // Slightly shorter delay, findAiMove has guards
+       }, 300); // 300ms delay
        return () => {
-            console.log("[Turn Check Timer] Clearing AI move timer.");
+            console.log("[Turn Check Timer] Clearing AI move timer due to dependency change or unmount.");
             clearTimeout(timer);
        }
      } else {
-        console.log("[Turn Check Effect] Conditions not met for triggering AI move.");
+        console.log("[Turn Check Effect] Conditions NOT met for triggering AI move. No timer scheduled.");
      }
-   // Key dependencies: fen (indicates board change), playerColor (if user switches sides), gameOver status, isThinking status
-   // findAiMove is included as it's the action to take
-   }, [fen, playerColor, gameOver, isThinking, game, findAiMove]); // game object needed for game.turn()
+   // Key dependencies:
+   // - fen: change indicates a move was made, potentially switching turns.
+   // - playerColor: if user switches sides, the turn check needs re-evaluation.
+   // - gameOver: stops AI from moving if game ended.
+   // - isThinking: stops AI if it's already processing.
+   // - game: the 'game' object itself is needed for game.turn().
+   // - findAiMove: the action triggered by the effect.
+   }, [fen, playerColor, gameOver, isThinking, game, findAiMove]);
 
 
   // Handle player move attempt
   function onDrop(sourceSquare: Square, targetSquare: Square, piece: Piece): boolean {
-    console.log(`[Player Move] Attempt: ${sourceSquare}-${targetSquare} (${piece})`);
+    console.log(`[Player Move Attempt] ${piece} from ${sourceSquare} to ${targetSquare}`);
     // Prevent player move if game over, AI is thinking, or it's not player's turn
-    if (gameOver || isThinking || game.turn() !== playerColor) {
-        console.log("[Player Move] Blocked:", { gameOver: !!gameOver, isThinking, turn: game.turn(), playerColor });
-        toast({ title: "Wait", description: isThinking ? "AI is thinking..." : "Not your turn.", variant: "default" });
+    if (gameOver) {
+        console.log("[Player Move] Blocked: Game is over.", gameOver);
+        toast({ title: "Game Over", description: "The game has ended.", variant: "default" });
+        return false;
+    }
+    if (isThinking) {
+        console.log("[Player Move] Blocked: AI is thinking.");
+        toast({ title: "Wait", description: "AI is thinking...", variant: "default" });
+        return false;
+    }
+     if (game.turn() !== playerColor) {
+        console.log("[Player Move] Blocked: Not your turn.", { turn: game.turn(), playerColor });
+        toast({ title: "Wait", description: "Not your turn.", variant: "default" });
         return false; // Move not allowed
     }
 
@@ -276,6 +353,7 @@ export default function PlayPage() {
     let moveResult = null;
     try {
       // Attempt the move
+      console.log(`[Player Move] Validating move ${sourceSquare}-${targetSquare} with chess.js`);
       moveResult = gameCopy.move({
         from: sourceSquare,
         to: targetSquare,
@@ -286,27 +364,29 @@ export default function PlayPage() {
 
       // If chess.js returns null, the move was illegal
       if (moveResult === null) {
-          console.log(`[Player Move] Illegal move: ${sourceSquare}-${targetSquare}`);
+          console.warn(`[Player Move] Illegal move attempted: ${sourceSquare}-${targetSquare}`);
           toast({ title: "Invalid Move", description: "That move is not allowed.", variant: "default" });
           return false; // Indicate the move was illegal
       }
 
       // Move was legal, proceed to update the actual game state
-      console.log(`[Player Move] Successful: ${moveResult.san}. New FEN: ${gameCopy.fen()}`);
+      console.log(`[Player Move] Move successful (validated by chess.js): ${moveResult.san}. New FEN: ${gameCopy.fen()}`);
       setGame(gameCopy); // Update game state object FIRST
       setFen(gameCopy.fen()); // Update FEN string state -> THIS TRIGGERS THE useEffect FOR AI TURN
       // No need to set isThinking false here, it wasn't true for player move
       setThinkingProgress(0); // Reset progress indicator for the upcoming AI turn
+      console.log(`[Player Move] Game state updated. Calling checkGameState.`);
       checkGameState(gameCopy); // Check if the player's move ended the game
 
       // Trigger AI move check immediately after player move by relying on the useEffect hook
       // triggered by the 'fen' state change.
+      console.log(`[Player Move] Move processed. AI turn check will be triggered by FEN update.`);
 
       return true; // Move was successful
 
     } catch (error) {
       // Catch potential errors during move validation/execution in chess.js
-      console.error(`[Player Move] Error processing move ${sourceSquare}-${targetSquare}:`, error);
+      console.error(`[Player Move] Error processing move ${sourceSquare}-${targetSquare} in chess.js:`, error);
       toast({ title: "Move Error", description: "An error occurred processing your move.", variant: "destructive" });
       return false; // Indicate failure due to error
     }
@@ -315,45 +395,70 @@ export default function PlayPage() {
 
    // Reset the game
    const resetGame = (newPlayerColor = playerColor) => {
-     console.log(`[Game Reset] Resetting game. Player will be: ${newPlayerColor === 'w' ? 'White' : 'Black'}`);
+     console.log(`[Game Reset] Attempting to reset game. Player will be: ${newPlayerColor === 'w' ? 'White' : 'Black'}`);
      // Stop any pending AI thinking process first
      if (stockfishWorker.current && isThinking) {
-        console.log("[Game Reset] Stopping current AI thinking...");
-        stockfishWorker.current.postMessage('stop'); // Ask Stockfish to stop
-        setIsThinking(false);
+        console.log("[Game Reset] AI is thinking. Sending 'stop' command to worker.");
+        try {
+            stockfishWorker.current.postMessage('stop'); // Ask Stockfish to stop
+        } catch (error) {
+             console.error("[Game Reset] Error sending 'stop' command to worker:", error);
+             // Continue with reset anyway
+        }
+        setIsThinking(false); // Force thinking state off
         moveRequestPending.current = false; // Reset pending flag
+     } else {
+        console.log("[Game Reset] AI not currently thinking or worker not available.");
      }
 
      const newGame = new Chess();
+     console.log("[Game Reset] Created new Chess() instance.");
      setGame(newGame);
      setFen(newGame.fen()); // Update FEN first
      setGameOver(null);
-     setIsThinking(false); // Ensure thinking is off
+     setIsThinking(false); // Ensure thinking is off again after potential async stop
      setThinkingProgress(0);
      setPlayerColor(newPlayerColor); // Set the player color
      setOrientation(newPlayerColor === 'w' ? 'white' : 'black'); // Update board orientation based on new color
+     console.log("[Game Reset] React state updated (game, fen, gameOver, isThinking, progress, playerColor, orientation).");
 
      // Ensure engine is ready before potentially triggering AI move
      if (engineReady.current && stockfishWorker.current) {
-        console.log("[Game Reset] Sending 'ucinewgame' and 'isready' to Stockfish.");
-        stockfishWorker.current.postMessage('ucinewgame');
-        stockfishWorker.current.postMessage('isready'); // Re-confirm readiness after new game
-        // The useEffect hook triggered by fen change will handle AI's first move if needed
+        console.log("[Game Reset] Engine is ready. Sending 'ucinewgame' and 'isready' to Stockfish.");
+         try {
+            stockfishWorker.current.postMessage('ucinewgame');
+            stockfishWorker.current.postMessage('isready'); // Re-confirm readiness after new game
+         } catch(error) {
+             console.error("[Game Reset] Error sending 'ucinewgame' or 'isready' to worker:", error);
+              // Attempt to recover? Maybe re-initialize worker? For now, just log.
+              toast({ title: "AI Error", description: "Failed to reset AI engine state.", variant: "destructive" });
+              engineReady.current = false; // Assume engine state is uncertain
+         }
+        // The useEffect hook triggered by fen/playerColor change will handle AI's first move if needed AFTER 'readyok' is received again.
      } else {
-        console.warn("[Game Reset] Stockfish worker not ready or not initialized. AI move might be delayed.");
-        // Attempt re-initialization if worker exists but not ready? Maybe too aggressive.
+        console.warn("[Game Reset] Stockfish worker not ready or not initialized. AI cannot be configured for new game state.", { engineReady: engineReady.current, worker: !!stockfishWorker.current });
+        // Attempt re-initialization if worker exists but not ready?
+        if (stockfishWorker.current && !engineReady.current) {
+            console.warn("[Game Reset] Attempting to re-send 'uci' to potentially recover worker.");
+             try {
+                stockfishWorker.current.postMessage('uci');
+             } catch (error) {
+                  console.error("[Game Reset] Error sending 'uci' during reset recovery attempt:", error);
+             }
+        }
      }
 
-     // The useEffect [fen, playerColor, ...] will handle triggering the AI if it's Black's turn.
-     console.log("[Game Reset] Game state updated. Turn check effect will run.");
+     // The useEffect [fen, playerColor, ...] will handle triggering the AI if it's Black's turn, once 'readyok' is confirmed.
+     console.log("[Game Reset] Game reset process complete. Turn check effect will run based on state changes.");
    };
 
 
    // Choose player color (resets game)
    const chooseColor = (color: 'w' | 'b') => {
-     console.log(`[Color Choice] Player chose ${color === 'w' ? 'White' : 'Black'}. Resetting game.`);
+     console.log(`[Color Choice] Player chose ${color === 'w' ? 'White' : 'Black'}.`);
      // Only reset if the color actually changes to prevent unnecessary resets
      if (color !== playerColor) {
+         console.log(`[Color Choice] Color changed from ${playerColor} to ${color}. Resetting game.`);
         resetGame(color); // Pass the new color to resetGame
      } else {
         console.log("[Color Choice] Same color selected, no reset needed.");
@@ -395,6 +500,16 @@ export default function PlayPage() {
                </Button>
            </Alert>
          )}
+         {/* Debug Info Area - Optional */}
+         {/* <Card className="mt-4 p-2 text-xs bg-muted/50">
+             <p>FEN: {fen}</p>
+             <p>Turn: {game.turn()}</p>
+             <p>Player: {playerColor}</p>
+             <p>Engine Ready: {engineReady.current.toString()}</p>
+             <p>AI Thinking: {isThinking.toString()}</p>
+             <p>Move Pending: {moveRequestPending.current.toString()}</p>
+             <p>Game Over: {gameOver ? `${gameOver.reason} (${gameOver.winner})` : 'No'}</p>
+         </Card> */}
       </div>
 
       <Card className="w-full lg:w-1/3 xl:w-1/4 shadow-lg rounded-lg bg-card border border-border">
@@ -410,7 +525,7 @@ export default function PlayPage() {
                onClick={() => chooseColor('w')}
                variant={playerColor === 'w' ? 'default' : 'outline'}
                className={`flex-1 ${playerColor === 'w' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border-primary text-primary hover:bg-primary/10'}`}
-               // Disable button if it's already the selected color or if AI is thinking
+               // Disable button if it's already the selected color or if AI is thinking (to prevent reset during AI move)
                disabled={isThinking || playerColor === 'w'}
              >
                Play as White
