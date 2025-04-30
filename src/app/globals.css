@@ -8,73 +8,75 @@ body {
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* Light Theme Colors - Deep Green, Light Tan, Gold */
+    --background: 60 56% 91%; /* Light Tan */
+    --foreground: 0 0% 3.9%; /* Default Dark Text */
+    --card: 60 56% 91%; /* Light Tan */
+    --card-foreground: 0 0% 3.9%; /* Default Dark Text */
+    --popover: 60 56% 91%; /* Light Tan */
+    --popover-foreground: 0 0% 3.9%; /* Default Dark Text */
+    --primary: 147 44% 36%; /* Deep Green */
+    --primary-foreground: 0 0% 98%; /* Light Text for contrast on Deep Green */
+    --secondary: 60 56% 85%; /* Slightly darker tan for secondary elements */
+    --secondary-foreground: 0 0% 9%; /* Dark Text */
+    --muted: 60 56% 85%; /* Slightly darker tan */
+    --muted-foreground: 0 0% 45.1%; /* Default Muted Text */
+    --accent: 51 100% 50%; /* Gold */
+    --accent-foreground: 0 0% 9%; /* Dark text for contrast on Gold */
+    --destructive: 0 84.2% 60.2%; /* Default Red */
+    --destructive-foreground: 0 0% 98%; /* Light Text */
+    --border: 147 44% 56%; /* Lighter Green for borders */
+    --input: 60 56% 80%; /* Tan variant for inputs */
+    --ring: 51 100% 50%; /* Gold for focus rings */
+    --chart-1: 147 44% 46%; /* Green variant */
+    --chart-2: 51 100% 60%; /* Gold variant */
+    --chart-3: 60 56% 70%; /* Tan variant */
+    --chart-4: 147 44% 26%; /* Darker Green */
+    --chart-5: 51 100% 40%; /* Darker Gold */
     --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 60 56% 93%; /* Light Tan */
+    --sidebar-foreground: 147 44% 26%; /* Dark Green */
+    --sidebar-primary: 147 44% 36%; /* Deep Green */
+    --sidebar-primary-foreground: 0 0% 98%; /* Light Text */
+    --sidebar-accent: 51 100% 50%; /* Gold */
+    --sidebar-accent-foreground: 0 0% 9%; /* Dark Text */
+    --sidebar-border: 147 44% 56%; /* Lighter Green */
+    --sidebar-ring: 51 100% 50%; /* Gold */
   }
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Dark Theme Colors - Inverted or darker variants */
+    --background: 147 44% 10%; /* Very Dark Green */
+    --foreground: 0 0% 98%; /* Light Text */
+    --card: 147 44% 10%; /* Very Dark Green */
+    --card-foreground: 0 0% 98%; /* Light Text */
+    --popover: 147 44% 10%; /* Very Dark Green */
+    --popover-foreground: 0 0% 98%; /* Light Text */
+    --primary: 147 44% 46%; /* Lighter Green for primary in dark */
+    --primary-foreground: 0 0% 9%; /* Dark Text */
+    --secondary: 147 44% 20%; /* Darker Green for secondary */
+    --secondary-foreground: 0 0% 98%; /* Light Text */
+    --muted: 147 44% 20%; /* Darker Green */
+    --muted-foreground: 0 0% 63.9%; /* Lighter Muted Text */
+    --accent: 51 100% 60%; /* Lighter Gold for accent in dark */
+    --accent-foreground: 0 0% 9%; /* Dark Text */
+    --destructive: 0 62.8% 30.6%; /* Darker Red */
+    --destructive-foreground: 0 0% 98%; /* Light Text */
+    --border: 147 44% 30%; /* Medium Dark Green for borders */
+    --input: 147 44% 25%; /* Dark Green variant for inputs */
+    --ring: 51 100% 60%; /* Lighter Gold for focus rings */
+    --chart-1: 147 44% 56%; /* Green variant */
+    --chart-2: 51 100% 70%; /* Gold variant */
+    --chart-3: 60 56% 40%; /* Dark Tan variant */
+    --chart-4: 147 44% 66%; /* Lighter Green */
+    --chart-5: 51 100% 80%; /* Lighter Gold */
+    --sidebar-background: 147 44% 15%; /* Dark Green */
+    --sidebar-foreground: 0 0% 95%; /* Light Text */
+    --sidebar-primary: 147 44% 46%; /* Lighter Green */
+    --sidebar-primary-foreground: 0 0% 9%; /* Dark Text */
+    --sidebar-accent: 51 100% 60%; /* Lighter Gold */
+    --sidebar-accent-foreground: 0 0% 9%; /* Dark Text */
+    --sidebar-border: 147 44% 30%; /* Medium Dark Green */
+    --sidebar-ring: 51 100% 60%; /* Lighter Gold */
   }
 }
 

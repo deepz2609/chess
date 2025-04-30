@@ -1,40 +1,66 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+.pnp.js
+.yarn/install-state.gz
 
-# testing
+# Testing
 /coverage
 
-# next.js
+# Next.js build outputs
 /.next/
 /out/
 
-# production
+# Production
 /build
 
-# misc
+# Misc
 .DS_Store
 *.pem
 
-# debug
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
 
-# vercel
-.vercel
+# Local Netlify folder
+.netlify
 
-# typescript
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Firebase Emulator Data
+*.log
+*.pid
+firestore.rules
+storage.rules
+database-debug.log
+firestore-debug.log
+pubsub-debug.log
+ui-debug.log
+*.snap
+
+# Environment variables
+.env.local
+.env.*.local
+# Do NOT add .env - it might contain non-sensitive defaults
+
+# Debugging
+*.tsbuildinfo
+
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
-.genkit/*
+# Genkit state
+.genkit/log/**
+.genkit/trace/**
