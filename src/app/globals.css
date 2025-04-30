@@ -8,75 +8,75 @@ body {
 
 @layer base {
   :root {
-    /* Light Theme Colors - Deep Green, Light Tan, Gold */
-    --background: 60 56% 91%; /* Light Tan */
-    --foreground: 0 0% 3.9%; /* Default Dark Text */
-    --card: 60 56% 91%; /* Light Tan */
-    --card-foreground: 0 0% 3.9%; /* Default Dark Text */
-    --popover: 60 56% 91%; /* Light Tan */
-    --popover-foreground: 0 0% 3.9%; /* Default Dark Text */
-    --primary: 147 44% 36%; /* Deep Green */
-    --primary-foreground: 0 0% 98%; /* Light Text for contrast on Deep Green */
-    --secondary: 60 56% 85%; /* Slightly darker tan for secondary elements */
-    --secondary-foreground: 0 0% 9%; /* Dark Text */
-    --muted: 60 56% 85%; /* Slightly darker tan */
-    --muted-foreground: 0 0% 45.1%; /* Default Muted Text */
-    --accent: 51 100% 50%; /* Gold */
-    --accent-foreground: 0 0% 9%; /* Dark text for contrast on Gold */
+    /* Light Theme Colors - Brown, Beige, Amber */
+    --background: 30 50% 90%; /* Warm Beige */
+    --foreground: 30 10% 20%; /* Dark Brown Text */
+    --card: 30 50% 90%; /* Warm Beige */
+    --card-foreground: 30 10% 20%; /* Dark Brown Text */
+    --popover: 30 50% 90%; /* Warm Beige */
+    --popover-foreground: 30 10% 20%; /* Dark Brown Text */
+    --primary: 30 59% 31%; /* Dark Wood Brown */
+    --primary-foreground: 30 30% 95%; /* Light Beige/Off-white */
+    --secondary: 30 50% 80%; /* Slightly darker Beige */
+    --secondary-foreground: 30 10% 20%; /* Dark Brown Text */
+    --muted: 30 50% 80%; /* Slightly darker Beige */
+    --muted-foreground: 30 10% 45%; /* Medium Brown Text */
+    --accent: 39 94% 54%; /* Amber */
+    --accent-foreground: 30 10% 15%; /* Dark Brown Text */
     --destructive: 0 84.2% 60.2%; /* Default Red */
     --destructive-foreground: 0 0% 98%; /* Light Text */
-    --border: 147 44% 56%; /* Lighter Green for borders */
-    --input: 60 56% 80%; /* Tan variant for inputs */
-    --ring: 51 100% 50%; /* Gold for focus rings */
-    --chart-1: 147 44% 46%; /* Green variant */
-    --chart-2: 51 100% 60%; /* Gold variant */
-    --chart-3: 60 56% 70%; /* Tan variant */
-    --chart-4: 147 44% 26%; /* Darker Green */
-    --chart-5: 51 100% 40%; /* Darker Gold */
+    --border: 30 59% 50%; /* Lighter Brown for borders */
+    --input: 30 50% 85%; /* Beige variant for inputs */
+    --ring: 39 94% 54%; /* Amber for focus rings */
+    --chart-1: 30 59% 41%; /* Brown variant */
+    --chart-2: 39 94% 64%; /* Amber variant */
+    --chart-3: 30 50% 70%; /* Beige variant */
+    --chart-4: 30 59% 21%; /* Darker Brown */
+    --chart-5: 39 94% 44%; /* Darker Amber */
     --radius: 0.5rem;
-    --sidebar-background: 60 56% 93%; /* Light Tan */
-    --sidebar-foreground: 147 44% 26%; /* Dark Green */
-    --sidebar-primary: 147 44% 36%; /* Deep Green */
-    --sidebar-primary-foreground: 0 0% 98%; /* Light Text */
-    --sidebar-accent: 51 100% 50%; /* Gold */
-    --sidebar-accent-foreground: 0 0% 9%; /* Dark Text */
-    --sidebar-border: 147 44% 56%; /* Lighter Green */
-    --sidebar-ring: 51 100% 50%; /* Gold */
+    --sidebar-background: 30 50% 92%; /* Very Light Beige */
+    --sidebar-foreground: 30 59% 21%; /* Dark Brown */
+    --sidebar-primary: 30 59% 31%; /* Dark Wood Brown */
+    --sidebar-primary-foreground: 30 30% 95%; /* Light Beige/Off-white */
+    --sidebar-accent: 39 94% 54%; /* Amber */
+    --sidebar-accent-foreground: 30 10% 15%; /* Dark Brown Text */
+    --sidebar-border: 30 59% 50%; /* Lighter Brown */
+    --sidebar-ring: 39 94% 54%; /* Amber */
   }
   .dark {
-    /* Dark Theme Colors - Inverted or darker variants */
-    --background: 147 44% 10%; /* Very Dark Green */
-    --foreground: 0 0% 98%; /* Light Text */
-    --card: 147 44% 10%; /* Very Dark Green */
-    --card-foreground: 0 0% 98%; /* Light Text */
-    --popover: 147 44% 10%; /* Very Dark Green */
-    --popover-foreground: 0 0% 98%; /* Light Text */
-    --primary: 147 44% 46%; /* Lighter Green for primary in dark */
-    --primary-foreground: 0 0% 9%; /* Dark Text */
-    --secondary: 147 44% 20%; /* Darker Green for secondary */
-    --secondary-foreground: 0 0% 98%; /* Light Text */
-    --muted: 147 44% 20%; /* Darker Green */
-    --muted-foreground: 0 0% 63.9%; /* Lighter Muted Text */
-    --accent: 51 100% 60%; /* Lighter Gold for accent in dark */
-    --accent-foreground: 0 0% 9%; /* Dark Text */
+    /* Dark Theme Colors - Dark Brown, Beige, Amber */
+    --background: 30 30% 10%; /* Very Dark Brown */
+    --foreground: 30 30% 95%; /* Light Beige Text */
+    --card: 30 30% 10%; /* Very Dark Brown */
+    --card-foreground: 30 30% 95%; /* Light Beige Text */
+    --popover: 30 30% 10%; /* Very Dark Brown */
+    --popover-foreground: 30 30% 95%; /* Light Beige Text */
+    --primary: 30 59% 41%; /* Medium Brown for primary in dark */
+    --primary-foreground: 30 10% 15%; /* Very Dark Brown Text */
+    --secondary: 30 30% 20%; /* Darker Brown for secondary */
+    --secondary-foreground: 30 30% 95%; /* Light Beige Text */
+    --muted: 30 30% 20%; /* Darker Brown */
+    --muted-foreground: 30 30% 65%; /* Lighter Muted Text */
+    --accent: 39 94% 64%; /* Lighter Amber for accent in dark */
+    --accent-foreground: 30 10% 15%; /* Very Dark Brown Text */
     --destructive: 0 62.8% 30.6%; /* Darker Red */
     --destructive-foreground: 0 0% 98%; /* Light Text */
-    --border: 147 44% 30%; /* Medium Dark Green for borders */
-    --input: 147 44% 25%; /* Dark Green variant for inputs */
-    --ring: 51 100% 60%; /* Lighter Gold for focus rings */
-    --chart-1: 147 44% 56%; /* Green variant */
-    --chart-2: 51 100% 70%; /* Gold variant */
-    --chart-3: 60 56% 40%; /* Dark Tan variant */
-    --chart-4: 147 44% 66%; /* Lighter Green */
-    --chart-5: 51 100% 80%; /* Lighter Gold */
-    --sidebar-background: 147 44% 15%; /* Dark Green */
-    --sidebar-foreground: 0 0% 95%; /* Light Text */
-    --sidebar-primary: 147 44% 46%; /* Lighter Green */
-    --sidebar-primary-foreground: 0 0% 9%; /* Dark Text */
-    --sidebar-accent: 51 100% 60%; /* Lighter Gold */
-    --sidebar-accent-foreground: 0 0% 9%; /* Dark Text */
-    --sidebar-border: 147 44% 30%; /* Medium Dark Green */
-    --sidebar-ring: 51 100% 60%; /* Lighter Gold */
+    --border: 30 59% 30%; /* Medium Dark Brown for borders */
+    --input: 30 30% 25%; /* Dark Brown variant for inputs */
+    --ring: 39 94% 64%; /* Lighter Amber for focus rings */
+    --chart-1: 30 59% 51%; /* Brown variant */
+    --chart-2: 39 94% 74%; /* Amber variant */
+    --chart-3: 30 50% 40%; /* Dark Beige variant */
+    --chart-4: 30 59% 61%; /* Lighter Brown */
+    --chart-5: 39 94% 84%; /* Lighter Amber */
+    --sidebar-background: 30 30% 15%; /* Dark Brown */
+    --sidebar-foreground: 30 30% 90%; /* Light Beige Text */
+    --sidebar-primary: 30 59% 41%; /* Medium Brown */
+    --sidebar-primary-foreground: 30 10% 15%; /* Very Dark Brown Text */
+    --sidebar-accent: 39 94% 64%; /* Lighter Amber */
+    --sidebar-accent-foreground: 30 10% 15%; /* Dark Brown Text */
+    --sidebar-border: 30 59% 30%; /* Medium Dark Brown */
+    --sidebar-ring: 39 94% 64%; /* Lighter Amber */
   }
 }
 
