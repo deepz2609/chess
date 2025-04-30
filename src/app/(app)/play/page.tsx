@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
 import type { Piece, Square } from 'react-chessboard/dist/chessboard/types';
 import { Chess } from 'chess.js';
-import type { StockfishInstance } from 'stockfish.js/dist/stockfish'; // Correct type import
+// import type { StockfishInstance } from 'stockfish.js/dist/stockfish'; // Correct type import - Removed as dependency is removed
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,7 +24,7 @@ export default function PlayPage() {
   const [gameOver, setGameOver] = useState<{ reason: string; winner: string | null } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingProgress, setThinkingProgress] = useState(0); // Progress from 0 to 100
-  const stockfish = useRef<StockfishInstance | null>(null);
+  // stockfish ref type is now implicitly 'any' or 'Worker' based on usage
   const stockfishWorker = useRef<Worker | null>(null);
   const { toast } = useToast();
 
@@ -33,6 +33,11 @@ export default function PlayPage() {
    useEffect(() => {
      if (typeof Worker !== 'undefined') {
        console.log("Initializing Stockfish worker...");
+       // Check if worker already exists to avoid multiple initializations on HMR
+       if (stockfishWorker.current) {
+            stockfishWorker.current.terminate(); // Terminate existing worker before creating a new one
+            console.log("Terminated existing Stockfish worker.");
+       }
        stockfishWorker.current = new Worker(stockfishPath);
 
        stockfishWorker.current.onmessage = (event) => {
@@ -74,10 +79,14 @@ export default function PlayPage() {
 
      // Cleanup worker on unmount
      return () => {
-        console.log("Terminating Stockfish worker...");
-        stockfishWorker.current?.terminate();
+        if (stockfishWorker.current) {
+            console.log("Terminating Stockfish worker on component unmount...");
+            stockfishWorker.current.terminate();
+            stockfishWorker.current = null; // Clear the ref
+        }
      };
-   }, [difficulty, toast]); // Re-initialize if difficulty changes
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [difficulty, toast]); // Re-initialize if difficulty changes - Removed redundant dependencies
 
 
   // Function to make AI move
@@ -219,7 +228,7 @@ export default function PlayPage() {
            />
          </Card>
            {isThinking && (
-              <Progress value={thinkingProgress} className="w-full mt-2 h-2 bg-secondary" indicatorClassName="bg-accent"/>
+              <Progress value={thinkingProgress} className="w-full mt-2 h-2 bg-secondary" />
            )}
          {gameOver && (
            <Alert variant="default" className="mt-4 bg-accent/10 border-accent text-accent-foreground rounded-lg shadow-md">
