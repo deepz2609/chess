@@ -21,7 +21,6 @@ export type FindBestChessMoveInput = z.infer<typeof FindBestChessMoveInputSchema
 const FindBestChessMoveOutputSchema = z.object({
   bestMoveUci: z.string().nullable().describe('The best move determined by the AI in UCI notation (e.g., "e2e4", "a7a8q"). Null if no move is possible or determined.'),
   status: z.enum(['success', 'no_valid_moves', 'error', 'invalid_move_suggested']).describe('Status of the move generation.'),
-  // Removed analysis field
 });
 export type FindBestChessMoveOutput = z.infer<typeof FindBestChessMoveOutputSchema>;
 
@@ -68,8 +67,6 @@ If no valid moves are provided, or if the game state represents a checkmate or s
     stopSequences: ["\n"], // Stop generation after the move
     // Consider adding candidate_count > 1 and choosing the best if needed, but start simple
   },
-  // Ensure output is just the move string
-  // format: 'text' // Implicitly text if output schema is just a string
 });
 
 const findBestChessMoveFlow = ai.defineFlow<
@@ -99,7 +96,8 @@ const findBestChessMoveFlow = ai.defineFlow<
           return { bestMoveUci: null, status: 'no_valid_moves' }; // No moves possible
       }
       console.warn("[findBestChessMove Flow] Gemini returned null but game not over. Treating as error.");
-      return { bestMoveUci: null, status: 'error' };
+      // Fallback to random move if AI fails to provide one
+      return { bestMoveUci: null, status: 'error' }; // Indicate error, let caller handle fallback
     }
 
      // Clean up the output - Gemini might add extra spaces or quotes
@@ -110,11 +108,13 @@ const findBestChessMoveFlow = ai.defineFlow<
     const gameForValidation = new Chess(input.boardStateFen);
     let isValidChessJsMove = false;
     try {
-        isValidChessJsMove = !!gameForValidation.move(suggestedMove, { sloppy: true }); // Try the move
+        // Use chess.js to validate the move structure and legality in the current position.
+        // The `move` method returns the move object if legal, null otherwise.
+        isValidChessJsMove = !!gameForValidation.move(suggestedMove, { sloppy: true });
         console.log(`[findBestChessMove Flow] chess.js validation result for '${suggestedMove}': ${isValidChessJsMove}`);
     } catch (e) {
-        // chess.js throws if the move format is fundamentally wrong (not just illegal)
-        console.warn(`[findBestChessMove Flow] chess.js threw error validating move '${suggestedMove}':`, e);
+        // chess.js might throw if the move format is fundamentally wrong (e.g., not UCI)
+        console.warn(`[findBestChessMove Flow] chess.js threw error validating move format '${suggestedMove}':`, e);
         isValidChessJsMove = false;
     }
 
@@ -126,13 +126,13 @@ const findBestChessMoveFlow = ai.defineFlow<
        return { bestMoveUci: suggestedMove, status: 'success' };
     } else {
        console.warn(`[findBestChessMove Flow] Gemini returned an invalid or unexpected move: '${suggestedMove}'. Valid according to chess.js: ${isValidChessJsMove}. In provided list: ${isInProvidedList}.`);
-       // Do NOT fallback to random here. Let the calling function decide.
-       return { bestMoveUci: null, status: 'invalid_move_suggested' };
+       // Fallback to random move if AI suggests invalid move
+       return { bestMoveUci: null, status: 'invalid_move_suggested' }; // Indicate invalid suggestion, let caller handle fallback
     }
 
   } catch (error) {
     console.error("[findBestChessMove Flow] Error calling Gemini:", error);
-    // Do NOT fallback to random here. Let the calling function decide.
-    return { bestMoveUci: null, status: 'error' };
+    // Fallback to random move on error
+    return { bestMoveUci: null, status: 'error' }; // Indicate error, let caller handle fallback
   }
 });

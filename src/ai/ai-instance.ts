@@ -8,6 +8,6 @@ export const ai = genkit({
       apiKey: process.env.GOOGLE_GENAI_API_KEY,
     }),
   ],
-  model: 'googleai/gemini-2.0-flash', // Use a faster, potentially less accurate model for speed
+  model: 'googleai/gemini-1.5-flash', // Use a faster, potentially less accurate model for speed
   // Or potentially use gemini-1.5-flash if available and suitable
 });
