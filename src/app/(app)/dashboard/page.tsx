@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect } from 'react'; // Added React import
@@ -52,6 +53,7 @@ const fetchGameStats = async (userId: string): Promise<GameStat[]> => {
       return stats;
   } catch (err: unknown) { // Catch unknown type
       // Check if it's a FirestoreError indicating a missing index
+      // Correctly use FirestoreError type
       if (err instanceof FirestoreError && err.code === 'failed-precondition') {
           console.error("Error fetching game stats: Missing Firestore index.", err);
           // Re-throw a more specific error message that the UI can detect
@@ -240,23 +242,10 @@ function DashboardContent() {
                              </TableHeader>
                              <TableBody>
                                  {gameStats.map((game) => (
-                                     <TableRow key={game.id}>
-                                         <TableCell className={`font-medium ${
+                                     // Ensure no extra whitespace between TableCell components
+                                     <TableRow key={game.id}><TableCell className={`font-medium ${
                                               game.result === 'win' ? 'text-primary' : game.result === 'loss' ? 'text-destructive' : 'text-accent' // Adjusted colors
-                                             }`}>
-                                            {game.result.charAt(0).toUpperCase() + game.result.slice(1)}
-                                         </TableCell>
-                                         <TableCell>{game.playerColor === 'w' ? 'White' : 'Black'}</TableCell>
-                                         <TableCell>{game.winner}</TableCell> {/* Display winner */}
-                                         <TableCell className="text-xs text-muted-foreground">{game.reason}</TableCell>
-                                         <TableCell className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <Clock className="h-3 w-3"/>
-                                            {formatDuration(game.timeElapsedMs)} {/* Display formatted duration */}
-                                         </TableCell>
-                                         <TableCell className="text-right text-xs text-muted-foreground">
-                                             {game.timestamp ? formatDistanceToNow(game.timestamp.toDate(), { addSuffix: true }) : 'N/A'}
-                                         </TableCell>
-                                     </TableRow>
+                                             }`}>{game.result.charAt(0).toUpperCase() + game.result.slice(1)}</TableCell><TableCell>{game.playerColor === 'w' ? 'White' : 'Black'}</TableCell><TableCell>{game.winner}</TableCell><TableCell className="text-xs text-muted-foreground">{game.reason}</TableCell><TableCell className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3"/>{formatDuration(game.timeElapsedMs)}</TableCell><TableCell className="text-right text-xs text-muted-foreground">{game.timestamp ? formatDistanceToNow(game.timestamp.toDate(), { addSuffix: true }) : 'N/A'}</TableCell></TableRow>
                                  ))}
                              </TableBody>
                          </Table>
