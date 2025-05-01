@@ -133,8 +133,9 @@ export default function ProfilePage() {
         setIsChangingPassword(!isChangingPassword);
     };
 
-    const handleDeleteDialogToggle = () => {
-        if (!isDeleteDialogOpen) {
+    const handleDeleteDialogToggle = (open: boolean) => {
+        setIsDeleteDialogOpen(open);
+        if (open) {
             // Close other forms when opening delete dialog
              if (isEditingName) setIsEditingName(false);
              if (isChangingPassword) {
@@ -144,8 +145,11 @@ export default function ProfilePage() {
              }
              setDeletePassword(""); // Reset password field
              setDeleteError(null); // Reset error message
+        } else {
+             // Reset error when dialog is closed
+             setDeleteError(null);
+             setDeletePassword("");
         }
-        setIsDeleteDialogOpen(!isDeleteDialogOpen);
     };
 
 
@@ -244,7 +248,7 @@ export default function ProfilePage() {
         }
 
         setIsDeleting(true);
-        setDeleteError(null);
+        setDeleteError(null); // Clear previous errors before attempt
 
         try {
           // Re-authentication is strongly recommended for deletion, especially for email/password users
@@ -273,7 +277,7 @@ export default function ProfilePage() {
           console.log("Account deleted successfully.");
 
           toast({ title: "Account Deleted", description: "Your account has been permanently deleted." });
-          setIsDeleteDialogOpen(false);
+          setIsDeleteDialogOpen(false); // Close dialog on success
           // User is automatically signed out after deletion
           // Redirect to login or home page
           router.push('/login');
@@ -283,18 +287,31 @@ export default function ProfilePage() {
           let errorMessage = "Failed to delete account.";
            if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') { // Treat invalid-credential as wrong password too
             errorMessage = "Incorrect password. Please try again.";
+            // Don't close the dialog here, let the user retry
           } else if (error.code === 'auth/requires-recent-login') {
             errorMessage = "This operation is sensitive and requires recent authentication. Please log out and log in again before deleting your account.";
+            setIsDeleteDialogOpen(false); // Close dialog for this error
           } else if (error.code === 'auth/too-many-requests') {
              errorMessage = "Too many attempts. Please try again later.";
+             setIsDeleteDialogOpen(false); // Close dialog for this error
           } else {
             errorMessage = error.message || errorMessage;
+            setIsDeleteDialogOpen(false); // Close dialog for other unexpected errors
           }
           setDeleteError(errorMessage);
         } finally {
+          // Only reset loading state, keep dialog open if it was an incorrect password error
           setIsDeleting(false);
         }
       };
+
+    // Handle changes to the delete password input to clear errors
+    const handlePasswordInputForDelete = (event: React.ChangeEvent<HTMLInputElement>) => {
+      setDeletePassword(event.target.value);
+      if (deleteError) {
+        setDeleteError(null); // Clear error when user starts typing again
+      }
+    };
 
 
   // Check if user signed in with email/password
@@ -375,7 +392,7 @@ export default function ProfilePage() {
                          <Button
                            variant="outline"
                            onClick={handleChangePasswordToggle}
-                           disabled={!isEmailPasswordUser} // Disable for non-email/password users
+                           disabled={!isEmailPasswordUser || isChangingPassword} // Also disable if already changing password
                            className="flex-1 sm:flex-none"
                          >
                            {isChangingPassword ? 'Cancel Password Change' : 'Change Password'}
@@ -383,9 +400,9 @@ export default function ProfilePage() {
                       )}
                      {/* Delete Account Button */}
                       {!isEditingName && !isChangingPassword && ( // Hide if editing name or changing password
-                          <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                          <AlertDialog open={isDeleteDialogOpen} onOpenChange={handleDeleteDialogToggle}>
                                <AlertDialogTrigger asChild>
-                                  <Button variant="destructive" className="flex-1 sm:flex-none">
+                                  <Button variant="destructive" className="flex-1 sm:flex-none" disabled={isDeleteDialogOpen}>
                                      <Trash2 className="mr-2 h-4 w-4" /> Delete Account
                                    </Button>
                                </AlertDialogTrigger>
@@ -407,7 +424,7 @@ export default function ProfilePage() {
                                              id="deletePassword"
                                              type="password"
                                              value={deletePassword}
-                                             onChange={(e) => setDeletePassword(e.target.value)}
+                                             onChange={handlePasswordInputForDelete} // Use handler to clear error
                                              placeholder="Enter your password"
                                              disabled={isDeleting}
                                              className={deleteError ? "border-destructive focus:border-destructive focus:ring-destructive" : ""}
@@ -422,7 +439,8 @@ export default function ProfilePage() {
                                      </Alert>
                                    )}
                                  <AlertDialogFooter>
-                                   <AlertDialogCancel disabled={isDeleting} onClick={() => setDeleteError(null)}>Cancel</AlertDialogCancel>
+                                    {/* Use explicit handler for Cancel to ensure state reset */}
+                                   <AlertDialogCancel disabled={isDeleting} onClick={() => handleDeleteDialogToggle(false)}>Cancel</AlertDialogCancel>
                                    <AlertDialogAction
                                        onClick={handleConfirmDelete}
                                        disabled={isDeleting || (isEmailPasswordUser && !deletePassword)}
@@ -438,7 +456,7 @@ export default function ProfilePage() {
                  </div>
 
                   {/* Display message for non-password users */}
-                   {!isEditingName && !isDeleteDialogOpen && !isEmailPasswordUser && (
+                   {!isEditingName && !isDeleteDialogOpen && !isChangingPassword && !isEmailPasswordUser && (
                       <p className="text-xs text-muted-foreground">Password change and standard deletion are not available for accounts signed in with Google.</p>
                    )}
 
@@ -506,3 +524,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
