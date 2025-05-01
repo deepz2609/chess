@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect } from 'react'; // Added React import
@@ -11,7 +10,7 @@ import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
 import { Swords, BarChart, UserCircle, Frown, Smile, Meh, CalendarDays, AlertCircle } from "lucide-react"; // Added icons for stats and error
 import { db } from '@/lib/firebase'; // Import Firestore instance
-import { collection, query, where, getDocs, orderBy, Timestamp, limit } from 'firebase/firestore'; // Import Firestore functions
+import { collection, query, where, getDocs, orderBy, Timestamp, limit, FirebaseError } from 'firebase/firestore'; // Import Firestore functions and FirebaseError type
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query'; // Import react-query
 import { formatDistanceToNow } from 'date-fns'; // For relative time formatting
 
@@ -34,18 +33,31 @@ const fetchGameStats = async (userId: string): Promise<GameStat[]> => {
   if (!userId) return []; // Return empty if no user ID
   console.log("Fetching game stats for user:", userId);
   const statsRef = collection(db, "gameStats");
-  // Query for games of the current user, ordered by timestamp descending, limit to last 10
-  // IMPORTANT: This query requires a composite index in Firestore: (userId ASC, timestamp DESC)
+
+  // IMPORTANT: This query requires a composite index in Firestore.
+  // Firestore Error: "The query requires an index..." indicates this index is missing.
+  // Index Fields:
+  // 1. `userId` ASCENDING
+  // 2. `timestamp` DESCENDING
   // Create it here: https://console.firebase.google.com/project/_/firestore/indexes/composite/create?collectionId=gameStats&fieldId1=userId&fieldOrder1=ASCENDING&fieldId2=timestamp&fieldOrder2=DESCENDING
+  // Replace '_' with your actual Firebase Project ID in the link above if it doesn't redirect correctly.
   const q = query(statsRef, where("userId", "==", userId), orderBy("timestamp", "desc"), limit(10));
+
   try {
       const querySnapshot = await getDocs(q);
       const stats = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GameStat));
       console.log("Fetched stats:", stats);
       return stats;
-  } catch (err) {
-      console.error("Error fetching game stats (check Firestore indexes and rules):", err);
-      // Re-throw the error so react-query can handle the error state
+  } catch (err: unknown) { // Catch unknown type
+      // Check if it's a FirebaseError indicating a missing index
+      if (err instanceof FirebaseError && err.code === 'failed-precondition') {
+          console.error("Error fetching game stats: Missing Firestore index.", err);
+          // Re-throw a more specific error or handle it differently if needed
+          throw new Error("Firestore query requires a composite index. Please create it in the Firebase console (see code comments or error log for link).");
+      } else {
+        console.error("Error fetching game stats (check Firestore rules and connectivity):", err);
+      }
+      // Re-throw the original or modified error so react-query can handle the error state
       throw err;
   }
 
@@ -66,7 +78,7 @@ function DashboardContent() {
 
   useEffect(() => {
       if (error) {
-          console.error("Error fetching game stats (from useQuery):", error);
+          console.error("Error fetching game stats (from useQuery):", error.message);
       }
   }, [error]);
 
@@ -87,6 +99,9 @@ function DashboardContent() {
    };
 
    const overallStats = calculateStats(gameStats);
+
+  // Determine if the error is the specific missing index error
+  const isMissingIndexError = error?.message.includes("Firestore query requires a composite index");
 
   return (
     <div className="flex flex-col gap-6">
@@ -185,7 +200,12 @@ function DashboardContent() {
                          <div className='text-destructive text-center p-4 flex flex-col items-center gap-2'>
                             <AlertCircle className="h-6 w-6" />
                             <p>Could not load recent games.</p>
-                            <p className="text-xs text-muted-foreground">(Check network connection and Firestore Index configuration)</p>
+                             {isMissingIndexError ? (
+                                <p className="text-xs text-muted-foreground">(Action Required: Create Firestore Index in Firebase Console. See error log or code comments for link.)</p>
+                             ) : (
+                                <p className="text-xs text-muted-foreground">(Check network connection or Firestore Rules)</p>
+                             )}
+
                              {/* Optional: Add a button to retry fetching */}
                              {/* <Button variant="outline" size="sm" onClick={() => queryClient.refetchQueries({ queryKey: ['gameStats', user?.uid] })}>Retry</Button> */}
                          </div>
@@ -202,7 +222,9 @@ function DashboardContent() {
                              <TableBody>
                                  {gameStats.map((game) => (
                                      <TableRow key={game.id}>
-                                         <TableCell className={`font-medium ${game.result === 'win' ? 'text-green-600' : game.result === 'loss' ? 'text-red-600' : 'text-yellow-600'}`}>
+                                         <TableCell className={`font-medium ${
+                                             game.result === 'win' ? 'text-green-500' : game.result === 'loss' ? 'text-red-500' : 'text-yellow-500'
+                                             }`}>
                                             {game.result.charAt(0).toUpperCase() + game.result.slice(1)}
                                          </TableCell>
                                          <TableCell>{game.playerColor === 'w' ? 'White' : 'Black'}</TableCell>
@@ -234,5 +256,3 @@ export default function DashboardPage() {
         </QueryClientProvider>
     );
 }
-
-    
