@@ -34,6 +34,17 @@ export default function PlayPage() {
     }
   }, []); // Run only once on mount
 
+   // Extract username part from email (part before @)
+   const getUsernameFromEmail = (email: string | null | undefined): string => {
+        if (!email) return "Player"; // Fallback name
+        return email.split('@')[0];
+   };
+
+   // Determine the display name: use Firebase displayName if set, otherwise extract from email
+   const getPlayerName = useCallback(() => {
+        return user?.displayName || getUsernameFromEmail(user?.email);
+   }, [user]);
+
 
    // Function to make a random legal move (Fallback)
    const makeFallbackMove = useCallback(() => {
@@ -43,6 +54,7 @@ export default function PlayPage() {
 
      if (possibleMoves.length === 0) {
        console.warn("[Fallback Move] No moves available for fallback.");
+       // Need to pass the game instance to checkGameState
        checkGameState(gameCopy); // Double check if game ended
        setIsThinking(false);
        aiMoveRequestPending.current = false;
@@ -60,21 +72,24 @@ export default function PlayPage() {
      checkGameState(gameCopy); // Check game state after the move
      setIsThinking(false); // AI is no longer thinking
      aiMoveRequestPending.current = false; // Request is no longer pending
-   }, [game]); // Dependency on game state, checkGameState will be defined later
+   }, [game, checkGameState]); // checkGameState needs to be stable or included
 
 
    // Check game state after each move
    const checkGameState = useCallback((currentGame: Chess) => {
      let currentGameOver = null;
      let resultForStats: 'win' | 'loss' | 'draw' | null = null;
-     let winnerPlayer: 'Player' | 'AI' | 'Draw' | null = null; // 'Player', 'AI', or 'Draw'
+     let winnerPlayer: string | 'AI' | 'Draw' | null = null; // Use string for player name
      let winnerColorDisplay: 'White' | 'Black' | 'Draw' | null = null; // For display message
 
+     const playerName = getPlayerName(); // Get the current player's name
+
      if (currentGame.isCheckmate()) {
-       winnerPlayer = currentGame.turn() === playerColor ? 'AI' : 'Player'; // The player whose turn it *isn't* wins
-       winnerColorDisplay = winnerPlayer === 'Player' ? (playerColor === 'w' ? 'White' : 'Black') : (playerColor === 'w' ? 'Black' : 'White');
+       const playerLost = currentGame.turn() === playerColor;
+       winnerPlayer = playerLost ? 'AI' : playerName; // Assign AI or actual player name
+       winnerColorDisplay = winnerPlayer === playerName ? (playerColor === 'w' ? 'White' : 'Black') : (playerColor === 'w' ? 'Black' : 'White');
        currentGameOver = { reason: 'Checkmate', winner: winnerColorDisplay };
-       resultForStats = winnerPlayer === 'Player' ? 'win' : 'loss';
+       resultForStats = winnerPlayer === playerName ? 'win' : 'loss';
        toast({ title: "Game Over!", description: `Checkmate! ${winnerColorDisplay} wins.` });
      } else if (currentGame.isStalemate()) {
        winnerPlayer = 'Draw';
@@ -121,7 +136,7 @@ export default function PlayPage() {
                 opponent: 'AI (Gemini)', // Be specific about the AI
                 playerColor: playerColor,
                 reason: currentGameOver.reason,
-                winner: winnerPlayer, // Store 'Player', 'AI', or 'Draw'
+                winner: winnerPlayer, // Store actual player name, 'AI', or 'Draw'
                 timeElapsedMs: elapsedTimeMs, // Store duration in ms
                 timestamp: serverTimestamp(), // Use server timestamp
             };
@@ -143,8 +158,7 @@ export default function PlayPage() {
              setGameOver(null);
          }
      }
-     // Note: Removed makeRandomMove from dependencies as it's defined within useCallback
-   }, [gameOver, toast, user, playerColor, gameStartTime]); // Added gameStartTime dependency
+   }, [gameOver, toast, user, playerColor, gameStartTime, getPlayerName]); // Added getPlayerName dependency
 
 
    // Handle AI move (received from Gemini or fallback)
@@ -155,7 +169,6 @@ export default function PlayPage() {
        // If moveNotation is null, it signifies AI failure or invalid suggestion.
        if (moveNotation === null) {
             console.warn("[handleAiMove] Received null move notation. Triggering fallback move.");
-            // Do not display 'AI is making alternative move' - just make the move.
             makeFallbackMove(); // Use the dedicated fallback function
             return; // Exit after calling fallback
        }
@@ -180,13 +193,11 @@ export default function PlayPage() {
            } else {
                // This case should ideally be caught by the flow's validation, but handle defensively
                console.warn(`[handleAiMove] AI suggested an invalid move according to chess.js: ${moveNotation}. Triggering fallback.`);
-                // Do not display 'Invalid AI Move' - just make the fallback move.
                makeFallbackMove(); // Use the dedicated fallback function
            }
        } catch (error) {
             // This catch is for unexpected errors during gameCopy.move(), not just invalid moves.
             console.error(`[handleAiMove] Error applying AI move '${moveNotation}'. Triggering fallback.`, error);
-            // Do not display 'AI Move Error' - just make the fallback move.
             makeFallbackMove(); // Use the dedicated fallback function
             return; // Exit after calling fallback
        }
@@ -237,7 +248,6 @@ export default function PlayPage() {
 
      } catch (error) {
          console.error("[findAiMove] Error calling findBestChessMove:", error);
-          // Do not display 'AI Communication Error' - just make the fallback move.
          handleAiMove(null); // Trigger fallback on communication error
      } finally {
         // Ensure flags are reset even if errors occur before handleAiMove is called
@@ -300,7 +310,6 @@ export default function PlayPage() {
         if (moveResult === null) {
             console.warn(`[onDrop] Invalid player move attempt: ${sourceSquare}${targetSquare}`);
             // Provide more helpful feedback if possible (e.g., "Cannot move King into check")
-            // For simplicity, a generic message is used here.
             toast({ title: "Invalid Move", description: "This move is not legal.", variant: "default" });
             return false; // Indicate move was not made
         }

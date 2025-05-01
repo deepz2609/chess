@@ -24,7 +24,7 @@ interface GameStat {
   playerColor: 'w' | 'b';
   reason: string;
   timestamp: Timestamp;
-  winner: 'Player' | 'AI' | 'Draw'; // Added winner field
+  winner: string | 'AI' | 'Draw'; // Changed to string to allow player name
   timeElapsedMs: number; // Added time elapsed field
 }
 
@@ -122,6 +122,16 @@ function DashboardContent() {
   // Determine if the error is the specific missing index error by checking the message
   const isMissingIndexError = !!error?.message.includes("Firestore query requires a composite index");
 
+  // Extract username part from email (part before @)
+  const getUsernameFromEmail = (email: string | null | undefined): string => {
+      if (!email) return "Player";
+      return email.split('@')[0];
+  };
+
+  // Determine the display name: use Firebase displayName if set, otherwise extract from email
+  const displayedName = user?.displayName || getUsernameFromEmail(user?.email);
+
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold text-primary">Dashboard</h1>
@@ -135,7 +145,7 @@ function DashboardContent() {
           </CardHeader>
           <CardContent>
             {/* Adjusted text size for email display */}
-            <div className="text-xl font-bold">{user?.displayName || 'Player'}</div>
+            <div className="text-xl font-bold">{displayedName}</div> {/* Use displayedName */}
              <p className="text-xs text-muted-foreground truncate"> {/* Added truncate */}
                 {user?.email}
              </p>
