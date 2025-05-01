@@ -8,11 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"; // Import ScrollArea
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
-import { Swords, BarChart, UserCircle, Frown, Smile, Meh, CalendarDays, AlertCircle } from "lucide-react"; // Added icons for stats and error
+import { Swords, BarChart, UserCircle, Frown, Smile, Meh, Clock, CalendarDays, AlertCircle } from "lucide-react"; // Added Clock icon, Adjusted icons for stats and error
 import { db } from '@/lib/firebase'; // Import Firestore instance
 import { collection, query, where, getDocs, orderBy, Timestamp, limit, FirestoreError } from 'firebase/firestore'; // Import Firestore functions and FirestoreError type
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query'; // Import react-query
-import { formatDistanceToNow } from 'date-fns'; // For relative time formatting
+import { formatDistanceToNow, format } from 'date-fns'; // For relative time formatting and duration
 
 // Define interface for game stats document
 interface GameStat {
@@ -23,6 +23,8 @@ interface GameStat {
   playerColor: 'w' | 'b';
   reason: string;
   timestamp: Timestamp;
+  winner: 'Player' | 'AI' | 'Draw'; // Added winner field
+  timeElapsedMs: number; // Added time elapsed field
 }
 
 // Create a react-query client
@@ -63,6 +65,19 @@ const fetchGameStats = async (userId: string): Promise<GameStat[]> => {
 
 };
 
+// Format duration from milliseconds to a readable string (e.g., "1m 25s")
+const formatDuration = (ms: number | undefined): string => {
+    if (ms === undefined || ms < 0) return 'N/A';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+};
+
+
 function DashboardContent() {
   const { user } = useAuth();
   const router = useRouter();
@@ -79,6 +94,8 @@ function DashboardContent() {
   useEffect(() => {
       if (error) {
           console.error("Error fetching game stats (from useQuery):", error.message);
+          // Optionally show a toast notification for the error
+          // toast({ title: "Error", description: "Could not load game stats.", variant: "destructive" });
       }
   }, [error]);
 
@@ -215,7 +232,9 @@ function DashboardContent() {
                                  <TableRow>
                                      <TableHead>Result</TableHead>
                                      <TableHead>Color</TableHead>
+                                     <TableHead>Winner</TableHead>
                                      <TableHead>Reason</TableHead>
+                                     <TableHead>Duration</TableHead>
                                      <TableHead className="text-right">Date</TableHead>
                                  </TableRow>
                              </TableHeader>
@@ -228,7 +247,12 @@ function DashboardContent() {
                                             {game.result.charAt(0).toUpperCase() + game.result.slice(1)}
                                          </TableCell>
                                          <TableCell>{game.playerColor === 'w' ? 'White' : 'Black'}</TableCell>
+                                         <TableCell>{game.winner}</TableCell> {/* Display winner */}
                                          <TableCell className="text-xs text-muted-foreground">{game.reason}</TableCell>
+                                         <TableCell className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Clock className="h-3 w-3"/>
+                                            {formatDuration(game.timeElapsedMs)} {/* Display formatted duration */}
+                                         </TableCell>
                                          <TableCell className="text-right text-xs text-muted-foreground">
                                              {game.timestamp ? formatDistanceToNow(game.timestamp.toDate(), { addSuffix: true }) : 'N/A'}
                                          </TableCell>

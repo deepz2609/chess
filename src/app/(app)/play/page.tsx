@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
@@ -22,12 +21,21 @@ export default function PlayPage() {
   const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w');
   const [gameOver, setGameOver] = useState<{ reason: string; winner: string | null } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
+  const [gameStartTime, setGameStartTime] = useState<Date | null>(null); // Track game start time
   const { toast } = useToast();
   const { user } = useAuth(); // Get current user
   const aiMoveRequestPending = useRef(false); // Prevents multiple simultaneous AI requests
   const gameStatsSaved = useRef(false); // Prevent saving stats multiple times for the same game
 
-  // Function to make a random legal move (Fallback)
+  // Set initial game start time on mount
+  useEffect(() => {
+    if (!gameStartTime) {
+      setGameStartTime(new Date());
+    }
+  }, []); // Run only once on mount
+
+
+   // Function to make a random legal move (Fallback)
    const makeFallbackMove = useCallback(() => {
      console.log("[Fallback Move] Attempting fallback move...");
      const gameCopy = new Chess(game.fen());
@@ -55,36 +63,41 @@ export default function PlayPage() {
    }, [game]); // Dependency on game state, checkGameState will be defined later
 
 
-  // Check game state after each move
+   // Check game state after each move
    const checkGameState = useCallback((currentGame: Chess) => {
      let currentGameOver = null;
      let resultForStats: 'win' | 'loss' | 'draw' | null = null;
-     let winnerPlayer: string | null = null; // 'Player', 'AI', or 'Draw'
+     let winnerPlayer: 'Player' | 'AI' | 'Draw' | null = null; // 'Player', 'AI', or 'Draw'
+     let winnerColorDisplay: 'White' | 'Black' | 'Draw' | null = null; // For display message
 
      if (currentGame.isCheckmate()) {
        winnerPlayer = currentGame.turn() === playerColor ? 'AI' : 'Player'; // The player whose turn it *isn't* wins
-       const winnerColor = winnerPlayer === 'Player' ? (playerColor === 'w' ? 'White' : 'Black') : (playerColor === 'w' ? 'Black' : 'White');
-       currentGameOver = { reason: 'Checkmate', winner: winnerColor };
+       winnerColorDisplay = winnerPlayer === 'Player' ? (playerColor === 'w' ? 'White' : 'Black') : (playerColor === 'w' ? 'Black' : 'White');
+       currentGameOver = { reason: 'Checkmate', winner: winnerColorDisplay };
        resultForStats = winnerPlayer === 'Player' ? 'win' : 'loss';
-       toast({ title: "Game Over!", description: `Checkmate! ${winnerColor} wins.` });
+       toast({ title: "Game Over!", description: `Checkmate! ${winnerColorDisplay} wins.` });
      } else if (currentGame.isStalemate()) {
        winnerPlayer = 'Draw';
-       currentGameOver = { reason: 'Stalemate', winner: 'Draw' };
+       winnerColorDisplay = 'Draw';
+       currentGameOver = { reason: 'Stalemate', winner: winnerColorDisplay };
        resultForStats = 'draw';
        toast({ title: "Game Over!", description: "Stalemate! It's a draw." });
      } else if (currentGame.isThreefoldRepetition()) {
         winnerPlayer = 'Draw';
-        currentGameOver = { reason: 'Threefold Repetition', winner: 'Draw' };
+        winnerColorDisplay = 'Draw';
+        currentGameOver = { reason: 'Threefold Repetition', winner: winnerColorDisplay };
         resultForStats = 'draw';
        toast({ title: "Game Over!", description: "Draw by Threefold Repetition." });
      } else if (currentGame.isInsufficientMaterial()) {
         winnerPlayer = 'Draw';
-        currentGameOver = { reason: 'Insufficient Material', winner: 'Draw' };
+        winnerColorDisplay = 'Draw';
+        currentGameOver = { reason: 'Insufficient Material', winner: winnerColorDisplay };
         resultForStats = 'draw';
        toast({ title: "Game Over!", description: "Draw by Insufficient Material." });
      } else if (currentGame.isDraw()) { // Includes 50-move rule
         winnerPlayer = 'Draw';
-        currentGameOver = { reason: 'Draw', winner: 'Draw' };
+        winnerColorDisplay = 'Draw';
+        currentGameOver = { reason: 'Draw', winner: winnerColorDisplay };
         resultForStats = 'draw';
        toast({ title: "Game Over!", description: "The game is a draw (50-move rule or other condition)." });
      }
@@ -95,21 +108,26 @@ export default function PlayPage() {
          aiMoveRequestPending.current = false; // Clear pending request
 
          // --- Save Game Stats to Firestore ---
-         if (user && !gameStatsSaved.current && resultForStats) {
+         if (user && !gameStatsSaved.current && resultForStats && gameStartTime) {
             console.log("Attempting to save game stats...");
             gameStatsSaved.current = true; // Set flag immediately to prevent duplicates
+
+            const endTime = new Date();
+            const elapsedTimeMs = endTime.getTime() - gameStartTime.getTime(); // Calculate duration in milliseconds
+
             const gameStatData = {
                 userId: user.uid,
                 result: resultForStats,
-                opponent: 'AI', // Currently only AI opponent
+                opponent: 'AI (Gemini)', // Be specific about the AI
                 playerColor: playerColor,
                 reason: currentGameOver.reason,
+                winner: winnerPlayer, // Store 'Player', 'AI', or 'Draw'
+                timeElapsedMs: elapsedTimeMs, // Store duration in ms
                 timestamp: serverTimestamp(), // Use server timestamp
-                // moves: currentGame.history({verbose: true}), // Store move history if needed
             };
             addDoc(collection(db, "gameStats"), gameStatData)
               .then(() => {
-                 console.log("Game stats saved successfully.");
+                 console.log("Game stats saved successfully:", gameStatData);
               })
               .catch((error) => {
                  console.error("Error saving game stats:", error);
@@ -125,7 +143,8 @@ export default function PlayPage() {
              setGameOver(null);
          }
      }
-   }, [gameOver, toast, user, playerColor]); // Added user and playerColor dependencies
+     // Note: Removed makeRandomMove from dependencies as it's defined within useCallback
+   }, [gameOver, toast, user, playerColor, gameStartTime]); // Added gameStartTime dependency
 
 
    // Handle AI move (received from Gemini or fallback)
@@ -136,7 +155,7 @@ export default function PlayPage() {
        // If moveNotation is null, it signifies AI failure or invalid suggestion.
        if (moveNotation === null) {
             console.warn("[handleAiMove] Received null move notation. Triggering fallback move.");
-            toast({ title: "AI Thinking...", description: "AI couldn't decide, making alternative move.", variant: "default" });
+            // Do not display 'AI is making alternative move' - just make the move.
             makeFallbackMove(); // Use the dedicated fallback function
             return; // Exit after calling fallback
        }
@@ -161,17 +180,17 @@ export default function PlayPage() {
            } else {
                // This case should ideally be caught by the flow's validation, but handle defensively
                console.warn(`[handleAiMove] AI suggested an invalid move according to chess.js: ${moveNotation}. Triggering fallback.`);
-               toast({ title: "Invalid AI Move", description: `AI suggested an invalid move. Making alternative move.`, variant: "destructive" });
+                // Do not display 'Invalid AI Move' - just make the fallback move.
                makeFallbackMove(); // Use the dedicated fallback function
            }
        } catch (error) {
             // This catch is for unexpected errors during gameCopy.move(), not just invalid moves.
             console.error(`[handleAiMove] Error applying AI move '${moveNotation}'. Triggering fallback.`, error);
-            toast({ title: "AI Move Error", description: `Error applying AI move. Making alternative move.`, variant: "destructive" });
+            // Do not display 'AI Move Error' - just make the fallback move.
             makeFallbackMove(); // Use the dedicated fallback function
             return; // Exit after calling fallback
        }
-   }, [game, gameOver, playerColor, toast, checkGameState, makeFallbackMove]); // Dependencies
+   }, [game, gameOver, playerColor, checkGameState, makeFallbackMove]); // Dependencies, removed toast
 
 
   // Function to request AI move from Gemini
@@ -218,7 +237,7 @@ export default function PlayPage() {
 
      } catch (error) {
          console.error("[findAiMove] Error calling findBestChessMove:", error);
-         toast({ title: "AI Communication Error", description: `Failed to get AI move. Making alternative move.`, variant: "destructive" });
+          // Do not display 'AI Communication Error' - just make the fallback move.
          handleAiMove(null); // Trigger fallback on communication error
      } finally {
         // Ensure flags are reset even if errors occur before handleAiMove is called
@@ -228,7 +247,7 @@ export default function PlayPage() {
              aiMoveRequestPending.current = false;
          }
      }
-  }, [game, gameOver, playerColor, isThinking, toast, handleAiMove, checkGameState]);
+  }, [game, gameOver, playerColor, isThinking, handleAiMove, checkGameState]); // removed toast
 
 
     // Trigger AI move when it's AI's turn
@@ -314,6 +333,7 @@ export default function PlayPage() {
      setGame(newGame);
      setFen(newGame.fen());
      setGameOver(null);
+     setGameStartTime(new Date()); // Reset game start time for new game
      gameStatsSaved.current = false; // Reset stats saved flag for the new game
      setPlayerColor(newPlayerColor);
      setOrientation(newPlayerColor === 'w' ? 'white' : 'black');
@@ -370,18 +390,19 @@ export default function PlayPage() {
          </Card>
          {/* Game Over Alert */}
          {gameOver && (
-           <Alert variant={gameOver.winner === 'Draw' ? 'default' : (playerColor === (gameOver.winner === 'White' ? 'w' : 'b') ? 'default' : 'destructive')} className="mt-4 bg-accent/10 border-accent text-accent-foreground rounded-lg shadow-md">
-             <Info className="h-5 w-5 text-accent" />
-             <AlertTitle className="font-bold text-lg">Game Over!</AlertTitle>
-             <AlertDescription>
-               {gameOver.reason}. {gameOver.winner !== 'Draw' ? `${gameOver.winner} wins!` : "It's a draw."}
-             </AlertDescription>
-               {/* Play Again Button */}
-               <Button onClick={() => resetGame()} variant="default" size="sm" className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
-                 Play Again?
-               </Button>
+           <Alert variant={gameOver.winner === 'Draw' ? 'default' : (gameOver.winner === (playerColor === 'w' ? 'White' : 'Black') ? 'default' : 'destructive')} className="mt-4 bg-accent/10 border-accent text-accent-foreground rounded-lg shadow-md">
+              <Info className="h-5 w-5 text-accent" />
+              <AlertTitle className="font-bold text-lg">Game Over!</AlertTitle>
+              <AlertDescription>
+                {gameOver.reason}. {gameOver.winner !== 'Draw' ? `${gameOver.winner} wins!` : "It's a draw."}
+              </AlertDescription>
+                {/* Play Again Button */}
+                <Button onClick={() => resetGame()} variant="default" size="sm" className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
+                  Play Again?
+                </Button>
            </Alert>
-         )}
+          )}
+
       </div>
 
       {/* Game Controls Section */}
