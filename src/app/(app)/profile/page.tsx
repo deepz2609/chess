@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState } from "react"; // Import useState
+import { useState, useEffect } from "react"; // Import useState and useEffect
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useAuth } from "@/context/auth-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,7 +18,7 @@ export default function ProfilePage() {
   const { user, loading, setUser } = useAuth(); // Get setUser from context to update local state
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
-  const [newDisplayName, setNewDisplayName] = useState(user?.displayName || '');
+  const [newDisplayName, setNewDisplayName] = useState(''); // Initialize empty
   const [editLoading, setEditLoading] = useState(false);
 
 
@@ -46,15 +47,18 @@ export default function ProfilePage() {
    // Determine the display name: use Firebase displayName if set, otherwise extract from email
    const displayedName = user?.displayName || getUsernameFromEmail(user?.email);
 
-   // Update state when user changes
-   useState(() => {
-        setNewDisplayName(user?.displayName || '');
-   }, [user?.displayName]);
+   // Update state when user changes (e.g., after login or initial load)
+   useEffect(() => {
+        if (user) {
+            setNewDisplayName(user.displayName || ''); // Initialize with current or empty
+        }
+   }, [user]); // Dependency on user object
 
 
     const handleEditToggle = () => {
         if (!isEditing) {
             // When starting edit, initialize input with current display name
+            // Ensures the input field reflects the latest name if edited elsewhere/reloaded
             setNewDisplayName(user?.displayName || '');
         }
         setIsEditing(!isEditing);
@@ -66,7 +70,12 @@ export default function ProfilePage() {
 
     const handleUpdateProfile = async (event: React.FormEvent) => {
         event.preventDefault(); // Prevent default form submission
-        if (!user) return;
+        // Ensure auth.currentUser is available directly from the auth instance
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+            toast({ title: "Error", description: "No user currently signed in.", variant: "destructive" });
+            return;
+        }
         if (!newDisplayName.trim()) {
             toast({ title: "Error", description: "Display name cannot be empty.", variant: "destructive" });
             return;
@@ -74,9 +83,12 @@ export default function ProfilePage() {
 
         setEditLoading(true);
         try {
-            await updateProfile(user, { displayName: newDisplayName.trim() });
+            // Use auth.currentUser for the updateProfile call
+            await updateProfile(currentUser, { displayName: newDisplayName.trim() });
+
             // Manually update user in context if setUser is available
-            if (setUser) {
+            // This ensures the UI updates immediately without needing a full refresh
+            if (setUser && user) { // Ensure user exists before spreading
                 const updatedUser = { ...user, displayName: newDisplayName.trim() };
                  // We need to cast the updated user object to the expected User type from firebase/auth
                  // This is a simplification; ideally, you refetch the user object or ensure type consistency.
@@ -167,3 +179,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
