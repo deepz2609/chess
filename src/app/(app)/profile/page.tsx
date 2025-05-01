@@ -10,16 +10,48 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input"; // Import Input
 import { Label } from "@/components/ui/label"; // Import Label
 import { useToast } from "@/hooks/use-toast"; // Import useToast
-import { updateProfile } from "firebase/auth"; // Import updateProfile
+import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth"; // Import password functions
 import { auth } from "@/lib/firebase"; // Import auth
+import { useForm } from "react-hook-form"; // Import react-hook-form
+import { zodResolver } from "@hookform/resolvers/zod"; // Import zodResolver
+import { z } from "zod"; // Import zod
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"; // Import Form components
+import { AlertCircle, Loader2 } from "lucide-react"; // Import icons
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+
+// Schema for password change form
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+  confirmNewPassword: z.string(),
+}).refine((data) => data.newPassword === data.confirmNewPassword, {
+  message: "New passwords don't match",
+  path: ["confirmNewPassword"], // path of error
+});
+
+type PasswordChangeFormValues = z.infer<typeof passwordChangeSchema>;
 
 
 export default function ProfilePage() {
   const { user, loading, setUser } = useAuth(); // Get setUser from context to update local state
   const { toast } = useToast();
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false); // State for password form visibility
   const [newDisplayName, setNewDisplayName] = useState(''); // Initialize empty
-  const [editLoading, setEditLoading] = useState(false);
+  const [editNameLoading, setEditNameLoading] = useState(false);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+
+  // Form hook for password change
+  const passwordForm = useForm<PasswordChangeFormValues>({
+    resolver: zodResolver(passwordChangeSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmNewPassword: "",
+    },
+  });
 
 
   // Get initials for avatar fallback
@@ -55,14 +87,32 @@ export default function ProfilePage() {
    }, [user]); // Dependency on user object
 
 
-    const handleEditToggle = () => {
-        if (!isEditing) {
+    const handleEditNameToggle = () => {
+        if (!isEditingName) {
             // When starting edit, initialize input with current display name
-            // Ensures the input field reflects the latest name if edited elsewhere/reloaded
             setNewDisplayName(user?.displayName || '');
+            // Close password change form if open
+            if (isChangingPassword) {
+                setIsChangingPassword(false);
+                passwordForm.reset(); // Reset password form fields
+                setPasswordChangeError(null); // Clear any previous password errors
+            }
         }
-        setIsEditing(!isEditing);
+        setIsEditingName(!isEditingName);
     };
+
+     const handleChangePasswordToggle = () => {
+        if (!isChangingPassword) {
+            // Close name edit form if open
+            if (isEditingName) {
+                setIsEditingName(false);
+            }
+            passwordForm.reset(); // Ensure form is clear when opening
+            setPasswordChangeError(null); // Clear previous errors
+        }
+        setIsChangingPassword(!isChangingPassword);
+    };
+
 
     const handleDisplayNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setNewDisplayName(event.target.value);
@@ -81,28 +131,73 @@ export default function ProfilePage() {
             return;
         }
 
-        setEditLoading(true);
+        setEditNameLoading(true);
         try {
             // Use auth.currentUser for the updateProfile call
             await updateProfile(currentUser, { displayName: newDisplayName.trim() });
 
             // Manually update user in context if setUser is available
-            // This ensures the UI updates immediately without needing a full refresh
             if (setUser && user) { // Ensure user exists before spreading
                 const updatedUser = { ...user, displayName: newDisplayName.trim() };
-                 // We need to cast the updated user object to the expected User type from firebase/auth
-                 // This is a simplification; ideally, you refetch the user object or ensure type consistency.
                  setUser(updatedUser as any); // Use 'as any' carefully, consider type checking
             }
             toast({ title: "Success", description: "Display name updated successfully." });
-            setIsEditing(false); // Exit editing mode
+            setIsEditingName(false); // Exit editing mode
         } catch (error: any) {
             console.error("Error updating profile:", error);
             toast({ title: "Error", description: `Failed to update profile: ${error.message}`, variant: "destructive" });
         } finally {
-            setEditLoading(false);
+            setEditNameLoading(false);
         }
     };
+
+
+     // Handle password change submission
+    const handlePasswordChange = async (values: PasswordChangeFormValues) => {
+        const currentUser = auth.currentUser;
+        if (!currentUser || !currentUser.email) { // Check for email as well
+            toast({ title: "Error", description: "User not found or email is missing.", variant: "destructive" });
+            return;
+        }
+
+        setChangePasswordLoading(true);
+        setPasswordChangeError(null); // Clear previous errors
+
+        try {
+            // Re-authenticate user - REQUIRED for password change
+            const credential = EmailAuthProvider.credential(currentUser.email, values.currentPassword);
+             console.log("Attempting re-authentication...");
+            await reauthenticateWithCredential(currentUser, credential);
+             console.log("Re-authentication successful.");
+
+            // If re-authentication successful, update password
+            console.log("Attempting password update...");
+            await updatePassword(currentUser, values.newPassword);
+             console.log("Password update successful.");
+
+            toast({ title: "Success", description: "Password updated successfully." });
+            setIsChangingPassword(false); // Close form on success
+            passwordForm.reset(); // Reset form fields
+
+        } catch (error: any) {
+             console.error("Error changing password:", error);
+             let errorMessage = "Failed to change password.";
+             if (error.code === 'auth/wrong-password') {
+                errorMessage = "Incorrect current password. Please try again.";
+                // Set specific error for the currentPassword field
+                passwordForm.setError("currentPassword", { type: "manual", message: errorMessage });
+             } else if (error.code === 'auth/too-many-requests') {
+                 errorMessage = "Too many attempts. Please try again later.";
+             } else {
+                errorMessage = error.message || errorMessage;
+             }
+             setPasswordChangeError(errorMessage); // Display general error in the alert
+            // Keep the form open for correction
+        } finally {
+            setChangePasswordLoading(false);
+        }
+    };
+
 
 
   return (
@@ -129,18 +224,20 @@ export default function ProfilePage() {
                     <AvatarFallback className="bg-primary text-primary-foreground text-xl">{getInitials(user.email, user.displayName)}</AvatarFallback>
                  </Avatar>
                <div>
-                  {/* Display Section */}
-                 {!isEditing ? (
+                  {/* Display Name Section */}
+                 {!isEditingName ? (
                    <>
                      <p className="text-lg font-semibold text-foreground">{displayedName}</p>
                       <p className="text-sm text-muted-foreground">{user.email}</p>
                       <p className="text-xs text-muted-foreground mt-1">User ID: {user.uid}</p>
-                      <Button variant="outline" size="sm" onClick={handleEditToggle} className="mt-2">
-                       Edit Display Name
-                     </Button>
+                      {!isChangingPassword && ( // Only show if not changing password
+                          <Button variant="outline" size="sm" onClick={handleEditNameToggle} className="mt-2">
+                            Edit Display Name
+                         </Button>
+                      )}
                    </>
                  ) : (
-                   // Editing Form
+                   // Editing Name Form
                     <form onSubmit={handleUpdateProfile} className="space-y-3">
                          <Label htmlFor="displayName">Display Name</Label>
                          <Input
@@ -149,14 +246,14 @@ export default function ProfilePage() {
                            value={newDisplayName}
                            onChange={handleDisplayNameChange}
                            placeholder="Enter your display name"
-                           disabled={editLoading}
+                           disabled={editNameLoading}
                            className="max-w-xs"
                          />
                          <div className="flex gap-2">
-                            <Button type="submit" size="sm" disabled={editLoading}>
-                               {editLoading ? "Saving..." : "Save Changes"}
+                            <Button type="submit" size="sm" disabled={editNameLoading}>
+                               {editNameLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save Changes"}
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={handleEditToggle} disabled={editLoading}>
+                            <Button variant="ghost" size="sm" onClick={handleEditNameToggle} disabled={editNameLoading}>
                                Cancel
                             </Button>
                         </div>
@@ -168,11 +265,84 @@ export default function ProfilePage() {
              <p>Could not load user information.</p>
            )}
 
-            {/* Other Account Actions */}
-            <div className="pt-4 border-t border-border">
-                <h3 className="text-md font-semibold mb-2 text-foreground">Account Actions</h3>
-                 <Button variant="outline" disabled>Change Password (Soon)</Button>
+            {/* Account Actions Section */}
+            <div className="pt-4 border-t border-border space-y-4">
+                <h3 className="text-md font-semibold text-foreground">Account Actions</h3>
+                 {!isEditingName && ( // Only show if not editing name
+                    <Button
+                       variant="outline"
+                       onClick={handleChangePasswordToggle}
+                       disabled={!user || user.providerData.some(provider => provider.providerId !== 'password')} // Disable for non-email/password users
+                    >
+                      {isChangingPassword ? 'Cancel Password Change' : 'Change Password'}
+                    </Button>
+                  )}
+                  {/* Display message for non-password users */}
+                  {user && !user.providerData.some(provider => provider.providerId === 'password') && (
+                     <p className="text-xs text-muted-foreground">Password change is not available for accounts signed in with Google.</p>
+                  )}
+
+                 {/* Password Change Form */}
+                 {isChangingPassword && user && user.providerData.some(provider => provider.providerId === 'password') && (
+                   <Card className="p-4 border-dashed border-primary/50 bg-background">
+                     <Form {...passwordForm}>
+                       <form onSubmit={passwordForm.handleSubmit(handlePasswordChange)} className="space-y-4">
+                         <FormField
+                           control={passwordForm.control}
+                           name="currentPassword"
+                           render={({ field }) => (
+                             <FormItem>
+                               <FormLabel>Current Password</FormLabel>
+                               <FormControl>
+                                 <Input type="password" placeholder="Enter your current password" {...field} disabled={changePasswordLoading} />
+                               </FormControl>
+                               <FormMessage />
+                             </FormItem>
+                           )}
+                         />
+                         <FormField
+                           control={passwordForm.control}
+                           name="newPassword"
+                           render={({ field }) => (
+                             <FormItem>
+                               <FormLabel>New Password</FormLabel>
+                               <FormControl>
+                                 <Input type="password" placeholder="Enter new password (min. 6 chars)" {...field} disabled={changePasswordLoading} />
+                               </FormControl>
+                               <FormMessage />
+                             </FormItem>
+                           )}
+                         />
+                         <FormField
+                           control={passwordForm.control}
+                           name="confirmNewPassword"
+                           render={({ field }) => (
+                             <FormItem>
+                               <FormLabel>Confirm New Password</FormLabel>
+                               <FormControl>
+                                 <Input type="password" placeholder="Confirm new password" {...field} disabled={changePasswordLoading} />
+                               </FormControl>
+                               <FormMessage />
+                             </FormItem>
+                           )}
+                         />
+                          {passwordChangeError && (
+                            <Alert variant="destructive">
+                               <AlertCircle className="h-4 w-4" />
+                               <AlertTitle>Error</AlertTitle>
+                               <AlertDescription>{passwordChangeError}</AlertDescription>
+                            </Alert>
+                          )}
+                         <Button type="submit" disabled={changePasswordLoading}>
+                           {changePasswordLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...</> : "Update Password"}
+                         </Button>
+                       </form>
+                     </Form>
+                   </Card>
+                 )}
+
                  {/* Add delete account etc. here */}
+                  <Button variant="destructive" disabled>Delete Account (Soon)</Button>
             </div>
          </CardContent>
        </Card>
