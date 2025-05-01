@@ -10,7 +10,7 @@ import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
 import { Swords, BarChart, UserCircle, Frown, Smile, Meh, CalendarDays, AlertCircle } from "lucide-react"; // Added icons for stats and error
 import { db } from '@/lib/firebase'; // Import Firestore instance
-import { collection, query, where, getDocs, orderBy, Timestamp, limit, FirebaseError } from 'firebase/firestore'; // Import Firestore functions and FirebaseError type
+import { collection, query, where, getDocs, orderBy, Timestamp, limit, FirestoreError } from 'firebase/firestore'; // Import Firestore functions and FirestoreError type
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query'; // Import react-query
 import { formatDistanceToNow } from 'date-fns'; // For relative time formatting
 
@@ -49,8 +49,8 @@ const fetchGameStats = async (userId: string): Promise<GameStat[]> => {
       console.log("Fetched stats:", stats);
       return stats;
   } catch (err: unknown) { // Catch unknown type
-      // Check if it's a FirebaseError indicating a missing index
-      if (err instanceof FirebaseError && err.code === 'failed-precondition') {
+      // Check if it's a FirestoreError indicating a missing index
+      if (err instanceof FirestoreError && err.code === 'failed-precondition') {
           console.error("Error fetching game stats: Missing Firestore index.", err);
           // Re-throw a more specific error or handle it differently if needed
           throw new Error("Firestore query requires a composite index. Please create it in the Firebase console (see code comments or error log for link).");
@@ -160,17 +160,17 @@ function DashboardContent() {
              ) : (
                  <div className="flex justify-around items-center text-center">
                    <div className="flex flex-col items-center">
-                     <Smile className="h-6 w-6 text-green-500 mb-1" /> {/* Adjusted Green */}
+                      <Smile className="h-6 w-6 text-primary mb-1" />
                      <span className="text-xl font-bold">{overallStats.wins}</span>
                      <span className="text-xs text-muted-foreground">Wins</span>
                    </div>
                    <div className="flex flex-col items-center">
-                      <Frown className="h-6 w-6 text-red-500 mb-1" /> {/* Adjusted Red */}
+                      <Frown className="h-6 w-6 text-destructive mb-1" />
                      <span className="text-xl font-bold">{overallStats.losses}</span>
                      <span className="text-xs text-muted-foreground">Losses</span>
                    </div>
                    <div className="flex flex-col items-center">
-                     <Meh className="h-6 w-6 text-yellow-500 mb-1" /> {/* Adjusted Yellow */}
+                      <Meh className="h-6 w-6 text-accent mb-1" />
                      <span className="text-xl font-bold">{overallStats.draws}</span>
                      <span className="text-xs text-muted-foreground">Draws</span>
                    </div>
@@ -223,7 +223,7 @@ function DashboardContent() {
                                  {gameStats.map((game) => (
                                      <TableRow key={game.id}>
                                          <TableCell className={`font-medium ${
-                                             game.result === 'win' ? 'text-green-500' : game.result === 'loss' ? 'text-red-500' : 'text-yellow-500'
+                                              game.result === 'win' ? 'text-primary' : game.result === 'loss' ? 'text-destructive' : 'text-accent' // Adjusted colors
                                              }`}>
                                             {game.result.charAt(0).toUpperCase() + game.result.slice(1)}
                                          </TableCell>
