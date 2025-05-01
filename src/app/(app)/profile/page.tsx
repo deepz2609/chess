@@ -217,7 +217,7 @@ export default function ProfilePage() {
         } catch (error: any) {
              console.error("Error changing password:", error);
              let errorMessage = "Failed to change password.";
-             if (error.code === 'auth/wrong-password') {
+             if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') { // Treat invalid-credential as wrong password too
                 errorMessage = "Incorrect current password. Please try again.";
                 // Set specific error for the currentPassword field
                 passwordForm.setError("currentPassword", { type: "manual", message: errorMessage });
@@ -281,7 +281,7 @@ export default function ProfilePage() {
         } catch (error: any) {
           console.error("Error deleting account:", error);
           let errorMessage = "Failed to delete account.";
-          if (error.code === 'auth/wrong-password') {
+           if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') { // Treat invalid-credential as wrong password too
             errorMessage = "Incorrect password. Please try again.";
           } else if (error.code === 'auth/requires-recent-login') {
             errorMessage = "This operation is sensitive and requires recent authentication. Please log out and log in again before deleting your account.";
@@ -506,4 +506,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
