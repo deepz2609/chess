@@ -44,7 +44,7 @@ const prompt = ai.definePrompt({
        bestMoveUci: z.string().nullable().describe('Suggested move in UCI format (e.g., "e2e4", "g1f3", "a7a8q").'),
      })
   },
-  prompt: `You are a strong chess engine. Your goal is to determine the best possible move given the current board state and the player whose turn it is.
+  prompt: `You are a world-class chess grandmaster AI, playing at the level of a World Champion. Your goal is to determine the absolute best possible move given the current board state and the player whose turn it is. You must perform deep strategic and tactical analysis.
 
 Current Board State (FEN):
 {{{boardStateFen}}}
@@ -56,16 +56,22 @@ Here is a list of all valid moves in UCI notation for the current player:
 - {{this}}
 {{/each}}
 
-Analyze the position and select the *single best move* from the provided list of valid moves. Return *only* the chosen move in UCI format (e.g., "e2e4", "g1f3", "a7a8q" for promotion). Do not include any explanation, analysis, or extraneous text.
+Analyze the position with extreme depth. Consider the following:
+- **Tactics:** Look for checks, captures, forks, pins, skewers, discovered attacks, and sacrifices several moves ahead.
+- **Strategy:** Evaluate piece activity, king safety, pawn structure, control of key squares and open files, and long-term positional advantages.
+- **Threats:** Identify and neutralize immediate threats from the opponent.
+- **Endgame:** If approaching an endgame, consider relevant principles.
+- **Avoid Blunders:** Do not make simple mistakes or hang pieces unnecessarily. Play with precision.
+
+Select the *single best move* from the provided list of valid moves based on your deep analysis. Return *only* the chosen move in UCI format (e.g., "e2e4", "g1f3", "a7a8q" for promotion). Do not include any explanation, analysis, or extraneous text. Your output must be solely the UCI string of the best move.
 
 If no valid moves are provided, or if the game state represents a checkmate or stalemate where no move is logically possible (though the list might technically be non-empty in some edge cases), return null for the move.
 `,
   // Configure the prompt for strong chess play
   config: {
-    temperature: 0.2, // Low temperature for more deterministic chess analysis
+    temperature: 0.2, // Low temperature for more deterministic, less random, stronger play
     maxOutputTokens: 10, // Enough for just the UCI move (e.g., "a7a8q")
     stopSequences: ["\n"], // Stop generation after the move
-    // Consider adding candidate_count > 1 and choosing the best if needed, but start simple
   },
 });
 
@@ -96,7 +102,6 @@ const findBestChessMoveFlow = ai.defineFlow<
           return { bestMoveUci: null, status: 'no_valid_moves' }; // No moves possible
       }
       console.warn("[findBestChessMove Flow] Gemini returned null but game not over. Treating as error.");
-      // Fallback to random move if AI fails to provide one
       return { bestMoveUci: null, status: 'error' }; // Indicate error, let caller handle fallback
     }
 
@@ -107,10 +112,12 @@ const findBestChessMoveFlow = ai.defineFlow<
     // Validate the returned move is actually in the list of valid moves *and* valid according to chess.js
     const gameForValidation = new Chess(input.boardStateFen);
     let isValidChessJsMove = false;
+    let validatedMoveObject = null;
     try {
         // Use chess.js to validate the move structure and legality in the current position.
         // The `move` method returns the move object if legal, null otherwise.
-        isValidChessJsMove = !!gameForValidation.move(suggestedMove, { sloppy: true });
+        validatedMoveObject = gameForValidation.move(suggestedMove, { sloppy: true }); // Sloppy allows SAN/UCI etc.
+        isValidChessJsMove = !!validatedMoveObject;
         console.log(`[findBestChessMove Flow] chess.js validation result for '${suggestedMove}': ${isValidChessJsMove}`);
     } catch (e) {
         // chess.js might throw if the move format is fundamentally wrong (e.g., not UCI)
@@ -118,21 +125,25 @@ const findBestChessMoveFlow = ai.defineFlow<
         isValidChessJsMove = false;
     }
 
-    const isInProvidedList = input.validMovesUci.includes(suggestedMove);
-    console.log(`[findBestChessMove Flow] Is move '${suggestedMove}' in provided list? ${isInProvidedList}`);
+    // Check if the move returned by Gemini is present in the initial list of valid moves
+    // We use the UCI representation from the validated move object if available, otherwise the raw suggestion.
+    // chess.js `move` function returns a move object containing the UCI string if successful.
+    const uciToCompare = validatedMoveObject ? validatedMoveObject.lan : suggestedMove;
+    const isInProvidedList = input.validMovesUci.includes(uciToCompare);
+    console.log(`[findBestChessMove Flow] Is move '${uciToCompare}' (derived from suggestion '${suggestedMove}') in provided list? ${isInProvidedList}`);
+
 
     if (isValidChessJsMove && isInProvidedList) {
-       console.log(`[findBestChessMove Flow] Move '${suggestedMove}' is valid and in the list. Returning success.`);
-       return { bestMoveUci: suggestedMove, status: 'success' };
+       console.log(`[findBestChessMove Flow] Move '${uciToCompare}' is valid and in the list. Returning success.`);
+        // Return the validated UCI move from chess.js object for consistency
+       return { bestMoveUci: uciToCompare, status: 'success' };
     } else {
-       console.warn(`[findBestChessMove Flow] Gemini returned an invalid or unexpected move: '${suggestedMove}'. Valid according to chess.js: ${isValidChessJsMove}. In provided list: ${isInProvidedList}.`);
-       // Fallback to random move if AI suggests invalid move
+       console.warn(`[findBestChessMove Flow] Gemini returned an invalid or unexpected move: '${suggestedMove}'. Valid according to chess.js: ${isValidChessJsMove}. In provided list: ${isInProvidedList} (compared against '${uciToCompare}').`);
        return { bestMoveUci: null, status: 'invalid_move_suggested' }; // Indicate invalid suggestion, let caller handle fallback
     }
 
   } catch (error) {
     console.error("[findBestChessMove Flow] Error calling Gemini:", error);
-    // Fallback to random move on error
     return { bestMoveUci: null, status: 'error' }; // Indicate error, let caller handle fallback
   }
 });
