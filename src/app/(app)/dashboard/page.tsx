@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect } from 'react'; // Added React import
@@ -8,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"; // Import ScrollArea
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
-import { Swords, BarChart, UserCircle, Frown, Smile, Meh, CalendarDays } from "lucide-react"; // Added icons for stats
+import { Swords, BarChart, UserCircle, Frown, Smile, Meh, CalendarDays, AlertCircle } from "lucide-react"; // Added icons for stats and error
 import { db } from '@/lib/firebase'; // Import Firestore instance
 import { collection, query, where, getDocs, orderBy, Timestamp, limit } from 'firebase/firestore'; // Import Firestore functions
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query'; // Import react-query
@@ -34,11 +35,20 @@ const fetchGameStats = async (userId: string): Promise<GameStat[]> => {
   console.log("Fetching game stats for user:", userId);
   const statsRef = collection(db, "gameStats");
   // Query for games of the current user, ordered by timestamp descending, limit to last 10
+  // IMPORTANT: This query requires a composite index in Firestore: (userId ASC, timestamp DESC)
+  // Create it here: https://console.firebase.google.com/project/_/firestore/indexes/composite/create?collectionId=gameStats&fieldId1=userId&fieldOrder1=ASCENDING&fieldId2=timestamp&fieldOrder2=DESCENDING
   const q = query(statsRef, where("userId", "==", userId), orderBy("timestamp", "desc"), limit(10));
-  const querySnapshot = await getDocs(q);
-  const stats = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GameStat));
-  console.log("Fetched stats:", stats);
-  return stats;
+  try {
+      const querySnapshot = await getDocs(q);
+      const stats = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GameStat));
+      console.log("Fetched stats:", stats);
+      return stats;
+  } catch (err) {
+      console.error("Error fetching game stats (check Firestore indexes and rules):", err);
+      // Re-throw the error so react-query can handle the error state
+      throw err;
+  }
+
 };
 
 function DashboardContent() {
@@ -46,16 +56,17 @@ function DashboardContent() {
   const router = useRouter();
 
   // Use react-query to fetch stats
-  const { data: gameStats, isLoading, error } = useQuery<GameStat[], Error>({
+  const { data: gameStats, isLoading, error, isError } = useQuery<GameStat[], Error>({
     queryKey: ['gameStats', user?.uid], // Query key includes user ID
     queryFn: () => fetchGameStats(user!.uid), // Query function
     enabled: !!user, // Only run query if user exists
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    retry: 1, // Only retry once on error
   });
 
   useEffect(() => {
       if (error) {
-          console.error("Error fetching game stats:", error);
+          console.error("Error fetching game stats (from useQuery):", error);
       }
   }, [error]);
 
@@ -127,24 +138,24 @@ function DashboardContent() {
                     <Skeleton className="h-4 w-20" />
                     <Skeleton className="h-4 w-16" />
                 </div>
-             ) : error ? (
+             ) : isError ? ( // Use isError state from react-query
                 <p className='text-destructive text-xs'>Error loading stats.</p>
              ) : gameStats?.length === 0 ? (
                 <p className='text-muted-foreground text-sm'>Play some games to see your stats!</p>
              ) : (
                  <div className="flex justify-around items-center text-center">
                    <div className="flex flex-col items-center">
-                     <Smile className="h-6 w-6 text-green-600 mb-1" />
+                     <Smile className="h-6 w-6 text-green-500 mb-1" /> {/* Adjusted Green */}
                      <span className="text-xl font-bold">{overallStats.wins}</span>
                      <span className="text-xs text-muted-foreground">Wins</span>
                    </div>
                    <div className="flex flex-col items-center">
-                      <Frown className="h-6 w-6 text-red-600 mb-1" />
+                      <Frown className="h-6 w-6 text-red-500 mb-1" /> {/* Adjusted Red */}
                      <span className="text-xl font-bold">{overallStats.losses}</span>
                      <span className="text-xs text-muted-foreground">Losses</span>
                    </div>
                    <div className="flex flex-col items-center">
-                     <Meh className="h-6 w-6 text-yellow-600 mb-1" />
+                     <Meh className="h-6 w-6 text-yellow-500 mb-1" /> {/* Adjusted Yellow */}
                      <span className="text-xl font-bold">{overallStats.draws}</span>
                      <span className="text-xs text-muted-foreground">Draws</span>
                    </div>
@@ -170,8 +181,14 @@ function DashboardContent() {
                                 <Skeleton key={i} className="h-10 w-full" />
                              ))}
                          </div>
-                    ) : error ? (
-                         <p className='text-destructive text-center p-4'>Could not load recent games.</p>
+                    ) : isError ? ( // Use isError state from react-query
+                         <div className='text-destructive text-center p-4 flex flex-col items-center gap-2'>
+                            <AlertCircle className="h-6 w-6" />
+                            <p>Could not load recent games.</p>
+                            <p className="text-xs text-muted-foreground">(Check network connection and Firestore Index configuration)</p>
+                             {/* Optional: Add a button to retry fetching */}
+                             {/* <Button variant="outline" size="sm" onClick={() => queryClient.refetchQueries({ queryKey: ['gameStats', user?.uid] })}>Retry</Button> */}
+                         </div>
                     ) : gameStats && gameStats.length > 0 ? (
                          <Table>
                              <TableHeader>
@@ -217,3 +234,5 @@ export default function DashboardPage() {
         </QueryClientProvider>
     );
 }
+
+    
