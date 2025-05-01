@@ -52,7 +52,7 @@ const fetchGameStats = async (userId: string): Promise<GameStat[]> => {
       // Check if it's a FirestoreError indicating a missing index
       if (err instanceof FirestoreError && err.code === 'failed-precondition') {
           console.error("Error fetching game stats: Missing Firestore index.", err);
-          // Re-throw a more specific error or handle it differently if needed
+          // Re-throw a more specific error message that the UI can detect
           throw new Error("Firestore query requires a composite index. Please create it in the Firebase console (see code comments or error log for link).");
       } else {
         console.error("Error fetching game stats (check Firestore rules and connectivity):", err);
@@ -100,8 +100,8 @@ function DashboardContent() {
 
    const overallStats = calculateStats(gameStats);
 
-  // Determine if the error is the specific missing index error
-  const isMissingIndexError = error?.message.includes("Firestore query requires a composite index");
+  // Determine if the error is the specific missing index error by checking the message
+  const isMissingIndexError = !!error?.message.includes("Firestore query requires a composite index");
 
   return (
     <div className="flex flex-col gap-6">
@@ -201,7 +201,7 @@ function DashboardContent() {
                             <AlertCircle className="h-6 w-6" />
                             <p>Could not load recent games.</p>
                              {isMissingIndexError ? (
-                                <p className="text-xs text-muted-foreground">(Action Required: Create Firestore Index in Firebase Console. See error log or code comments for link.)</p>
+                                <p className="text-xs text-muted-foreground">(Action Required: Create Firestore Index in Firebase Console. See error log or code comments for details and link.)</p>
                              ) : (
                                 <p className="text-xs text-muted-foreground">(Check network connection or Firestore Rules)</p>
                              )}
