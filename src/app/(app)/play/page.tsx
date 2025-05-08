@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
@@ -44,35 +45,6 @@ export default function PlayPage() {
    const getPlayerName = useCallback(() => {
         return user?.displayName || getUsernameFromEmail(user?.email);
    }, [user]);
-
-
-   // Function to make a random legal move (Fallback)
-   const makeFallbackMove = useCallback(() => {
-     console.log("[Fallback Move] Attempting fallback move...");
-     const gameCopy = new Chess(game.fen());
-     const possibleMoves = gameCopy.moves({ verbose: false }); // Get simple UCI strings
-
-     if (possibleMoves.length === 0) {
-       console.warn("[Fallback Move] No moves available for fallback.");
-       // Need to pass the game instance to checkGameState
-       checkGameState(gameCopy); // Double check if game ended
-       setIsThinking(false);
-       aiMoveRequestPending.current = false;
-       return; // Exit if no moves possible
-     }
-
-     const randomIdx = Math.floor(Math.random() * possibleMoves.length);
-     const move = possibleMoves[randomIdx];
-
-     console.log("[Fallback Move] Making move:", move);
-     gameCopy.move(move); // Apply the chosen move to the copy
-
-     setGame(gameCopy); // Update the main game state
-     setFen(gameCopy.fen()); // Update the FEN to trigger re-render
-     checkGameState(gameCopy); // Check game state after the move
-     setIsThinking(false); // AI is no longer thinking
-     aiMoveRequestPending.current = false; // Request is no longer pending
-   }, [game, checkGameState]); // checkGameState needs to be stable or included
 
 
    // Check game state after each move
@@ -161,6 +133,35 @@ export default function PlayPage() {
    }, [gameOver, toast, user, playerColor, gameStartTime, getPlayerName]); // Added getPlayerName dependency
 
 
+   // Function to make a random legal move (Fallback)
+   const makeFallbackMove = useCallback(() => {
+     console.log("[Fallback Move] Attempting fallback move...");
+     const gameCopy = new Chess(game.fen());
+     const possibleMoves = gameCopy.moves({ verbose: false }); // Get simple UCI strings
+
+     if (possibleMoves.length === 0) {
+       console.warn("[Fallback Move] No moves available for fallback.");
+       // Need to pass the game instance to checkGameState
+       checkGameState(gameCopy); // Double check if game ended
+       setIsThinking(false);
+       aiMoveRequestPending.current = false;
+       return; // Exit if no moves possible
+     }
+
+     const randomIdx = Math.floor(Math.random() * possibleMoves.length);
+     const move = possibleMoves[randomIdx];
+
+     console.log("[Fallback Move] Making move:", move);
+     gameCopy.move(move); // Apply the chosen move to the copy
+
+     setGame(gameCopy); // Update the main game state
+     setFen(gameCopy.fen()); // Update the FEN to trigger re-render
+     checkGameState(gameCopy); // Check game state after the move
+     setIsThinking(false); // AI is no longer thinking
+     aiMoveRequestPending.current = false; // Request is no longer pending
+   }, [game, checkGameState]); // checkGameState needs to be stable or included
+
+
    // Handle AI move (received from Gemini or fallback)
    const handleAiMove = useCallback((moveNotation: string | null) => {
        setIsThinking(false); // Turn off thinking indicator regardless of outcome
@@ -193,15 +194,17 @@ export default function PlayPage() {
            } else {
                // This case should ideally be caught by the flow's validation, but handle defensively
                console.warn(`[handleAiMove] AI suggested an invalid move according to chess.js: ${moveNotation}. Triggering fallback.`);
+               toast({ title: "AI Error", description: "AI suggested an invalid move. Making a different move.", variant: "default" });
                makeFallbackMove(); // Use the dedicated fallback function
            }
        } catch (error) {
             // This catch is for unexpected errors during gameCopy.move(), not just invalid moves.
             console.error(`[handleAiMove] Error applying AI move '${moveNotation}'. Triggering fallback.`, error);
+            toast({ title: "AI Error", description: "Error applying AI move. Making a different move.", variant: "destructive" });
             makeFallbackMove(); // Use the dedicated fallback function
             return; // Exit after calling fallback
        }
-   }, [game, gameOver, playerColor, checkGameState, makeFallbackMove]); // Dependencies, removed toast
+   }, [game, gameOver, playerColor, checkGameState, makeFallbackMove, toast]);
 
 
   // Function to request AI move from Gemini
@@ -243,11 +246,13 @@ export default function PlayPage() {
          } else {
              // AI failed, returned no move, or returned invalid move. Pass null to trigger fallback.
              console.warn(`[findAiMove] AI flow status: ${result.status}. Passing null to handleAiMove for fallback.`);
+             toast({ title: "AI Decision", description: "AI could not decide or suggested an invalid move. Making a different move.", variant: "default" });
              handleAiMove(null);
          }
 
      } catch (error) {
          console.error("[findAiMove] Error calling findBestChessMove:", error);
+         toast({ title: "AI Error", description: "Error communicating with AI. Making a different move.", variant: "destructive" });
          handleAiMove(null); // Trigger fallback on communication error
      } finally {
         // Ensure flags are reset even if errors occur before handleAiMove is called
@@ -257,7 +262,7 @@ export default function PlayPage() {
              aiMoveRequestPending.current = false;
          }
      }
-  }, [game, gameOver, playerColor, isThinking, handleAiMove, checkGameState]); // removed toast
+  }, [game, gameOver, playerColor, isThinking, handleAiMove, checkGameState, toast]);
 
 
     // Trigger AI move when it's AI's turn
@@ -456,3 +461,4 @@ export default function PlayPage() {
     </div>
   );
 }
+
