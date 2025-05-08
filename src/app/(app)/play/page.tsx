@@ -194,7 +194,7 @@ export default function PlayPage() {
            } else {
                // This case should ideally be caught by the flow's validation, but handle defensively
                console.warn(`[handleAiMove] AI suggested an invalid move according to chess.js: ${moveNotation}. Triggering fallback.`);
-               toast({ title: "AI Error", description: "AI suggested an invalid move. Making a different move.", variant: "default" });
+               // toast({ title: "AI Error", description: "AI suggested an invalid move. Making a different move.", variant: "default" }); // Removed AI decision toast
                makeFallbackMove(); // Use the dedicated fallback function
            }
        } catch (error) {
@@ -246,7 +246,7 @@ export default function PlayPage() {
          } else {
              // AI failed, returned no move, or returned invalid move. Pass null to trigger fallback.
              console.warn(`[findAiMove] AI flow status: ${result.status}. Passing null to handleAiMove for fallback.`);
-             toast({ title: "AI Decision", description: "AI could not decide or suggested an invalid move. Making a different move.", variant: "default" });
+             // toast({ title: "AI Decision", description: "AI could not decide or suggested an invalid move. Making a different move.", variant: "default" }); // Removed AI decision toast
              handleAiMove(null);
          }
 
@@ -461,4 +461,3 @@ export default function PlayPage() {
     </div>
   );
 }
-
